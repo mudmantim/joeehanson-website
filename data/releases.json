@@ -1,27 +1,49 @@
 [
   {
-    "id": 1,
+    "id": "featured",
     "title": "Just Me and This Guitar",
     "image": "assets/images/109.webp",
-    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK",
+    "spotify": "https://open.spotify.com/track/4K8DifKb8fNKFiFHcvwvvk",
     "youtube": "https://youtube.com/@joeehansonmusic?si=ax4xHf7uwWgTZVJw"
   },
   {
-    "id": 2,
+    "id": "fourteen-years",
     "title": "Fourteen Years",
     "image": "assets/images/104.png",
-    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+    "spotify": "https://open.spotify.com/album/3pWh9MIe5RzYWmmng65qjE",
+    "tracks": [
+      { "title": "The Light in the Window",  "url": "https://open.spotify.com/track/4tQmc1YFcblc5sj7HuHs5T" },
+      { "title": "Just Me and This Guitar",  "url": "https://open.spotify.com/track/4K8DifKb8fNKFiFHcvwvvk" },
+      { "title": "Leveling Out",             "url": "https://open.spotify.com/track/4kE597hZHLC585HxZLK2vy" },
+      { "title": "The Line",                 "url": "https://open.spotify.com/track/3JsIlZ3IW6B7u3XJu6AibH" },
+      { "title": "Belonging",                "url": "https://open.spotify.com/track/3vHtfESxMW6oeg1y44pRKs" },
+      { "title": "Chemical Calm",            "url": "https://open.spotify.com/track/7ffXSpd28B8D2Orr7OC7ef" },
+      { "title": "Nothing Left",             "url": "https://open.spotify.com/track/3fbICv80G3gf2PgkkL34nH" },
+      { "title": "The Place I Belong",       "url": "https://open.spotify.com/track/3tNcTGDRIhzc2W853wF5dO" },
+      { "title": "Welcome to the Asylum",    "url": "https://open.spotify.com/track/4gfo3MmsNJa8r8GMvSwEvt" },
+      { "title": "The Long Way Home",        "url": "https://open.spotify.com/track/7DH3zIQXQkQFxQVCsJwJet" },
+      { "title": "The Static and the Stone", "url": "https://open.spotify.com/track/5Q3ngUJ2DUirVGiBbmEwij" },
+      { "title": "Queen Takes Her King",     "url": "https://open.spotify.com/track/1gCqO9jZfPLsEABGggciRt" },
+      { "title": "Fourteen Years",           "url": "https://open.spotify.com/track/4Vdp7uRgM5JtzwNoG5ZE9r" },
+      { "title": "The Ides of March 10th",   "url": "https://open.spotify.com/track/73lTGUF06haemBiCVrqPfh" }
+    ]
   },
   {
-    "id": 3,
+    "id": "when-im-gone",
     "title": "When I'm Gone",
     "image": "assets/images/123.png",
-    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+    "spotify": "https://open.spotify.com/album/4INT7qeVeyqGJIkKqwWp4G",
+    "tracks": [
+      { "title": "When I'm Gone", "url": "https://open.spotify.com/track/5tVhie67FxZCtQoX2JLEeK" }
+    ]
   },
   {
-    "id": 4,
+    "id": "the-man-under-the-ash",
     "title": "The Man Under the Ash",
     "image": "assets/images/126.jpg",
-    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+    "spotify": "https://open.spotify.com/album/0sbhp3XUYisaWqlsbefSCg",
+    "tracks": [
+      { "title": "The Man Under the Ash", "url": "https://open.spotify.com/track/5yN3WSfdDFsF91lxxlWGwW" }
+    ]
   }
 ]

@@ -87,24 +87,29 @@ function renderMusic(releases) {
   if (!grid) return;
 
   grid.innerHTML = releases
-    .map(
-      (r, i) => `
-    <div class="music__item reveal" style="--d:${(i * 0.12).toFixed(2)}s">
-      <img
-        class="music__item-img"
-        src="${escape(r.image)}"
-        alt="${escape(r.title)}"
-        loading="lazy"
-      >
-      <div class="music__item-info">
-        <p class="music__item-title">${escape(r.title)}</p>
-        ${r.spotify
-          ? `<a class="music__item-listen" href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer">Listen &rarr;</a>`
-          : ''}
-      </div>
-    </div>
-  `
-    )
+    .map((r, i) => {
+      const tracklist = (r.tracks || [])
+        .map((t, ti) => `
+          <li class="catalog__track">
+            <span class="catalog__track-num" aria-hidden="true">${String(ti + 1).padStart(2, '0')}</span>
+            <a class="catalog__track-link" href="${escape(t.url)}" target="_blank" rel="noopener noreferrer">${escape(t.title)}</a>
+          </li>`)
+        .join('');
+
+      return `
+        <article class="catalog__album reveal" style="--d:${(i * 0.14).toFixed(2)}s">
+          <a class="catalog__art-wrap" href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
+            <img class="catalog__art" src="${escape(r.image)}" alt="${escape(r.title)}" loading="lazy">
+          </a>
+          <div class="catalog__detail">
+            <h3 class="catalog__album-title">
+              <a href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer">${escape(r.title)}</a>
+            </h3>
+            ${tracklist ? `<ol class="catalog__tracks">${tracklist}</ol>` : ''}
+            <a class="catalog__cta" href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer">Listen on Spotify &nbsp;&rarr;</a>
+          </div>
+        </article>`;
+    })
     .join('');
 
   observeAll(grid);
