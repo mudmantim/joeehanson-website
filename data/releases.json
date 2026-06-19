@@ -9,7 +9,7 @@
   {
     "id": "fourteen-years",
     "title": "Fourteen Years",
-    "image": "assets/images/104.png",
+    "image": "assets/images/104.webp",
     "spotify": "https://open.spotify.com/album/3pWh9MIe5RzYWmmng65qjE",
     "tracks": [
       { "title": "The Light in the Window",  "url": "https://open.spotify.com/track/4tQmc1YFcblc5sj7HuHs5T" },
@@ -31,7 +31,7 @@
   {
     "id": "when-im-gone",
     "title": "When I'm Gone",
-    "image": "assets/images/123.png",
+    "image": "assets/images/123.webp",
     "spotify": "https://open.spotify.com/album/4INT7qeVeyqGJIkKqwWp4G",
     "tracks": [
       { "title": "When I'm Gone", "url": "https://open.spotify.com/track/5tVhie67FxZCtQoX2JLEeK" }
@@ -40,7 +40,7 @@
   {
     "id": "the-man-under-the-ash",
     "title": "The Man Under the Ash",
-    "image": "assets/images/126.jpg",
+    "image": "assets/images/126.webp",
     "spotify": "https://open.spotify.com/album/0sbhp3XUYisaWqlsbefSCg",
     "tracks": [
       { "title": "The Man Under the Ash", "url": "https://open.spotify.com/track/5yN3WSfdDFsF91lxxlWGwW" }

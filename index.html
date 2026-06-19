@@ -8,20 +8,37 @@
   <meta name="description" content="Singer-songwriter. Somewhere between here and gone.">
   <meta name="theme-color" content="#080807">
 
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png">
+
   <!-- iOS PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Joe E. Hanson">
-  <link rel="apple-touch-icon" href="assets/images/104.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 
   <!-- Open Graph -->
   <meta property="og:title" content="Joe E. Hanson">
   <meta property="og:description" content="Singer-songwriter. Somewhere between here and gone.">
-  <meta property="og:image" content="assets/images/104.png">
+  <meta property="og:image" content="assets/images/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Joe E. Hanson">
+
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Joe E. Hanson">
+  <meta name="twitter:description" content="Singer-songwriter. Somewhere between here and gone.">
+  <meta name="twitter:image" content="assets/images/og-image.jpg">
 
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
+
+  <!-- Preload hero image -->
+  <link rel="preload" as="image" href="assets/images/110.webp" type="image/webp">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,13 +53,16 @@
 
   <!-- ========== HERO ========== -->
   <section id="hero" class="hero">
-    <img
-      src="assets/images/110.png"
-      alt=""
-      class="hero__bg-img"
-      loading="eager"
-      fetchpriority="high"
-    >
+    <picture>
+      <source srcset="assets/images/110.webp" type="image/webp">
+      <img
+        src="assets/images/110.png"
+        alt=""
+        class="hero__bg-img"
+        loading="eager"
+        fetchpriority="high"
+      >
+    </picture>
     <div class="hero__overlay" aria-hidden="true"></div>
     <div class="hero__content">
       <h1 class="hero__name fade-in">Joe E. Hanson</h1>
