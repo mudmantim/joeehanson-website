@@ -1,0 +1,35 @@
+[build]
+  publish = "."
+
+# ── www → apex ──────────────────────────────────────────────────────────────
+[[redirects]]
+  from    = "https://www.joeehanson.com/*"
+  to      = "https://joeehanson.com/:splat"
+  status  = 301
+  force   = true
+
+# ── joeehanson.org → .com ───────────────────────────────────────────────────
+[[redirects]]
+  from    = "https://joeehanson.org/*"
+  to      = "https://joeehanson.com/:splat"
+  status  = 301
+  force   = true
+
+[[redirects]]
+  from    = "https://www.joeehanson.org/*"
+  to      = "https://joeehanson.com/:splat"
+  status  = 301
+  force   = true
+
+# ── joeehansonmusic.com → .com ──────────────────────────────────────────────
+[[redirects]]
+  from    = "https://joeehansonmusic.com/*"
+  to      = "https://joeehanson.com/:splat"
+  status  = 301
+  force   = true
+
+[[redirects]]
+  from    = "https://www.joeehansonmusic.com/*"
+  to      = "https://joeehanson.com/:splat"
+  status  = 301
+  force   = true

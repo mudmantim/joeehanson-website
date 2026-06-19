@@ -1,4 +1,4 @@
-const CACHE = 'joeehanson-v1';
+const CACHE = 'joeehanson-v2';
 
 const PRECACHE = [
   '/',
@@ -6,6 +6,8 @@ const PRECACHE = [
   '/style.css',
   '/script.js',
   '/manifest.json',
+  '/sitemap.xml',
+  '/robots.txt',
   '/favicon.ico',
   '/apple-touch-icon.png',
   '/data/releases.json',
