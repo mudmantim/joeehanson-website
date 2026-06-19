@@ -1,0 +1,27 @@
+[
+  {
+    "id": 1,
+    "title": "Just Me and This Guitar",
+    "image": "assets/images/109.webp",
+    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK",
+    "youtube": "https://youtube.com/@joeehansonmusic?si=ax4xHf7uwWgTZVJw"
+  },
+  {
+    "id": 2,
+    "title": "Fourteen Years",
+    "image": "assets/images/104.png",
+    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+  },
+  {
+    "id": 3,
+    "title": "When I'm Gone",
+    "image": "assets/images/123.png",
+    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+  },
+  {
+    "id": 4,
+    "title": "The Man Under the Ash",
+    "image": "assets/images/126.jpg",
+    "spotify": "https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+  }
+]

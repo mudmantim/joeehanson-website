@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Joe E. Hanson</title>
+  <meta name="description" content="Singer-songwriter. Somewhere between here and gone.">
+  <meta name="theme-color" content="#080807">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Joe E. Hanson">
+  <link rel="apple-touch-icon" href="assets/images/104.png">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Joe E. Hanson">
+  <meta property="og:description" content="Singer-songwriter. Somewhere between here and gone.">
+  <meta property="og:image" content="assets/images/104.png">
+  <meta property="og:type" content="website">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- ========== HERO ========== -->
+  <section id="hero" class="hero">
+    <img
+      src="assets/images/110.png"
+      alt=""
+      class="hero__bg-img"
+      loading="eager"
+      fetchpriority="high"
+    >
+    <div class="hero__overlay" aria-hidden="true"></div>
+    <div class="hero__content">
+      <h1 class="hero__name fade-in">Joe E. Hanson</h1>
+      <p class="hero__tagline fade-in fade-in--delay">somewhere between here and gone</p>
+      <div class="hero__ctas fade-in fade-in--delay-2">
+        <a
+          href="https://open.spotify.com/artist/4d9HCBjhHZxt7TFTYq3YNK"
+          class="hero__cta hero__cta--listen"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Listen</a>
+        <a
+          href="https://youtube.com/@joeehansonmusic?si=ax4xHf7uwWgTZVJw"
+          class="hero__cta hero__cta--watch"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Watch</a>
+      </div>
+    </div>
+    <div class="hero__scroll" aria-hidden="true">
+      <span></span>
+    </div>
+  </section>
+
+  <!-- ========== LATEST RELEASE ========== -->
+  <section id="latest" class="latest reveal">
+    <div class="latest__inner">
+      <p class="section-label">Featured Song</p>
+      <div class="latest__content" id="latest-content">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MUSIC ========== -->
+  <section id="music" class="music">
+    <div class="section-inner">
+      <p class="section-label reveal">Music</p>
+      <div class="music__grid" id="music-grid">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== ABOUT ========== -->
+  <section id="about" class="about reveal">
+    <div class="about__inner">
+      <div class="about__image-wrap">
+        <img
+          src="assets/images/109.webp"
+          alt="Joe E. Hanson"
+          class="about__image"
+          loading="lazy"
+        >
+      </div>
+      <div class="about__text">
+        <p class="section-label">About</p>
+        <p>Joe E. Hanson writes songs about the things people don't say out loud.</p>
+        <p>His records sound like driving home alone at 2&nbsp;AM with the windows down in November. He's been making music since there was nothing else to do.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FRAGMENTS ========== -->
+  <section id="fragments" class="fragments">
+    <div class="section-inner">
+      <p class="section-label reveal">Fragments</p>
+      <div class="fragments__list" id="fragments-list">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== PWA ========== -->
+  <section id="pwa" class="pwa reveal">
+    <img
+      src="assets/images/111.webp"
+      alt=""
+      class="pwa__bg"
+      aria-hidden="true"
+      loading="lazy"
+    >
+    <div class="pwa__inner">
+      <p class="pwa__headline">Take it with you.</p>
+      <button class="pwa__btn" id="pwa-install" hidden>Add to Home Screen</button>
+      <p class="pwa__sub" id="pwa-installed" hidden>Already in your pocket.</p>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer reveal">
+    <div class="footer__inner">
+      <nav class="footer__socials" id="footer-socials" aria-label="Social links">
+        <!-- populated by JS -->
+      </nav>
+      <p class="footer__copy">&copy; <span id="year"></span> Joe E. Hanson</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
