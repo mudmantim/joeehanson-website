@@ -685,12 +685,51 @@ a {
   position: relative;
 }
 
+/* Fast, never-fully-invisible reveal — scroll past this section
+   quickly (anchor jump, fling-scroll) should never show a black gap. */
+.fragments .reveal:not(.visible) {
+  opacity: 0.7;
+  transform: translateY(10px);
+  transition:
+    opacity 0.4s var(--ease-smooth) var(--d, 0s),
+    transform 0.4s var(--ease-smooth) var(--d, 0s);
+}
+
+.fragments .section-label {
+  margin-bottom: 1rem;
+}
+
+.fragments__context {
+  font-size: 1rem;
+  font-style: italic;
+  color: var(--cream-mid);
+  line-height: 1.8;
+  max-width: 480px;
+  margin-bottom: 3.5rem;
+}
+
 .fragments__list {
   max-width: 660px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 5rem;
+}
+
+.fragments__exit {
+  display: block;
+  width: fit-content;
+  margin: 4.5rem auto 0;
+  font-size: 0.95rem;
+  font-style: italic;
+  color: var(--cream-mid);
+  border-bottom: 1px solid transparent;
+  transition: color 0.35s ease, border-color 0.35s ease;
+}
+
+.fragments__exit:hover {
+  color: var(--amber-warm);
+  border-color: var(--amber-warm);
 }
 
 .fragment {
