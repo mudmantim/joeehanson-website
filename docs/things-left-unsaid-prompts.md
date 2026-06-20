@@ -1,8 +1,17 @@
 # Things Left Unsaid — Image Generation Prompts
 
-Things Left Unsaid is a visual companion to the music. The collection is
-built around evidence of a life rather than portraits of a person. The
-recurring theme is a single warm light against a lot of darkness.
+Things Left Unsaid is a visual companion to the music.
+
+The collection is built around evidence of a life rather than portraits
+of a person.
+
+The recurring theme is a single warm light against a great deal of
+darkness.
+
+These images are not album covers, promotional photography, or artist
+portraits. They are quiet observations — traces of someone's presence,
+moments that feel interrupted rather than staged. The goal is not
+beauty or drama. The goal is memory.
 
 This document is a prompt reference only. No images have been generated
 from it, and no assets or site changes are included in this commit.
