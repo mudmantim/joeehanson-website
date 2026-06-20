@@ -65,6 +65,25 @@ function renderLatest(release) {
 
   const meta = [release.year, release.type].filter(Boolean).join(' · ');
 
+  const player = release.audio
+    ? `
+      <div class="player">
+        <audio class="player__audio" src="${escape(release.audio)}" preload="metadata"></audio>
+        <button class="player__toggle" type="button" aria-label="Play">
+          <svg class="player__icon player__icon--play" viewBox="0 0 24 24" aria-hidden="true"><polygon points="6,4 20,12 6,20"></polygon></svg>
+          <svg class="player__icon player__icon--pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16"></rect><rect x="14" y="4" width="5" height="16"></rect></svg>
+        </button>
+        <div class="player__main">
+          <input class="player__seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek">
+          <div class="player__time">
+            <span class="player__current">0:00</span>
+            <span class="player__duration">0:00</span>
+          </div>
+        </div>
+      </div>
+    `
+    : '';
+
   el.innerHTML = `
     <img
       class="latest__art"
@@ -76,10 +95,78 @@ function renderLatest(release) {
       <h2 class="latest__title">${escape(release.title)}</h2>
       ${meta ? `<p class="latest__meta">${escape(meta)}</p>` : ''}
       ${release.description ? `<p class="latest__desc">${escape(release.description)}</p>` : ''}
+      ${player}
       ${primaryCtas ? `<div class="latest__primary-ctas">${primaryCtas}</div>` : ''}
       ${secondaryLinks ? `<div class="latest__links">${secondaryLinks}</div>` : ''}
     </div>
   `;
+
+  if (release.audio) {
+    initPlayer(el.querySelector('.player'));
+  }
+}
+
+function initPlayer(root) {
+  if (!root) return;
+
+  const audio = root.querySelector('.player__audio');
+  const toggle = root.querySelector('.player__toggle');
+  const seek = root.querySelector('.player__seek');
+  const currentEl = root.querySelector('.player__current');
+  const durationEl = root.querySelector('.player__duration');
+  let seeking = false;
+
+  const formatTime = (sec) => {
+    if (!isFinite(sec) || sec < 0) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  audio.addEventListener('loadedmetadata', () => {
+    seek.max = audio.duration;
+    durationEl.textContent = formatTime(audio.duration);
+  });
+
+  audio.addEventListener('timeupdate', () => {
+    if (!seeking) seek.value = audio.currentTime;
+    currentEl.textContent = formatTime(audio.currentTime);
+  });
+
+  audio.addEventListener('play', () => {
+    root.classList.add('is-playing');
+    toggle.setAttribute('aria-label', 'Pause');
+  });
+
+  audio.addEventListener('pause', () => {
+    root.classList.remove('is-playing');
+    toggle.setAttribute('aria-label', 'Play');
+  });
+
+  audio.addEventListener('ended', () => {
+    root.classList.remove('is-playing');
+    toggle.setAttribute('aria-label', 'Play');
+    seek.value = 0;
+    currentEl.textContent = '0:00';
+  });
+
+  toggle.addEventListener('click', () => {
+    if (audio.paused) {
+      audio.play();
+    } else {
+      audio.pause();
+    }
+  });
+
+  seek.addEventListener('input', () => {
+    seeking = true;
+    currentEl.textContent = formatTime(Number(seek.value));
+  });
+
+  seek.addEventListener('change', () => {
+    audio.currentTime = Number(seek.value);
+    seeking = false;
+  });
 }
 
 function renderMusic(releases) {
