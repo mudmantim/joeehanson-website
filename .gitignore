@@ -1,0 +1,23 @@
+# Local Netlify state (site id, cached build info) — machine-local, not source.
+.netlify/
+
+# Local agent/tooling configuration.
+.claude/
+
+# Unpublished media kept locally on purpose.
+#
+# assets/lyrics/ holds lyric PDFs/ODT drafts and assets/videos/ a 58 MB master
+# video. Neither is referenced by any page, and both return 404 in production —
+# they are source material, not site content. They are deliberately NOT tracked:
+# a 58 MB binary does not belong in git, and nothing on the site links to it.
+# If any of this is ever meant to be published, add the page that links to it
+# and move the file into the tracked tree in the same change.
+assets/lyrics/
+assets/videos/
+
+# Stray image export, duplicated from a working folder.
+ChatGPT Image *.png
+
+# OS noise
+.DS_Store
+Thumbs.db
