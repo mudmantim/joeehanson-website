@@ -31,21 +31,43 @@ export const REPORT_TZ = 'America/New_York';
 
 type StoreOpts = { consistency?: 'strong' | 'eventual' };
 
-function isProduction(): boolean {
-  // `CONTEXT` is "production" only for a production deploy; branch deploys and
-  // deploy previews get "branch-deploy" / "deploy-preview".
-  // Both globals are referenced defensively: `Netlify` exists in the edge
-  // runtime, `process` in the Node one, and a bare reference to whichever is
-  // absent throws a ReferenceError rather than yielding undefined.
-  const g = globalThis as any;
-  const ctx =
-    g.Netlify?.env?.get?.('CONTEXT') ??
-    (typeof process !== 'undefined' ? process.env?.CONTEXT : undefined);
-  return ctx === 'production';
+/** The one hostname whose traffic is real. */
+export const PRODUCTION_HOST = 'joeehanson.com';
+
+/**
+ * Whether this request is production traffic.
+ *
+ * Derived from the hostname, NOT from the CONTEXT environment variable.
+ * CONTEXT is a build-time variable and is not readable from the edge runtime:
+ * `Netlify.env.get('CONTEXT')` returns undefined there, so a context check
+ * silently reported "not production" on production and every deploy wrote to
+ * one shared store. That was caught only because verifying production found a
+ * preview write showing up in it.
+ *
+ * The hostname cannot drift the same way: a deploy preview is served from
+ * deploy-preview-N--joeehanson.netlify.app, a branch deploy from
+ * branch--joeehanson.netlify.app, and local dev from localhost. Only the
+ * canonical domain is production.
+ */
+export function isProductionRequest(req: Request): boolean {
+  try {
+    return new URL(req.url).hostname === PRODUCTION_HOST;
+  } catch {
+    return false;
+  }
 }
 
-export function analyticsStore(opts: StoreOpts = {}) {
-  return getStore({ name: isProduction() ? STORE_NAME : PREVIEW_STORE_NAME, ...opts });
+/** For the Node scheduled function, which has no request to look at. */
+export function isProductionProcess(): boolean {
+  return typeof process !== 'undefined' && process.env?.CONTEXT === 'production';
+}
+
+export function storeNameFor(production: boolean): string {
+  return production ? STORE_NAME : PREVIEW_STORE_NAME;
+}
+
+export function analyticsStore(production: boolean, opts: StoreOpts = {}) {
+  return getStore({ name: storeNameFor(production), ...opts });
 }
 
 /** `YYYY-MM-DD` in the reporting timezone, not UTC and not the visitor's zone. */
@@ -85,8 +107,8 @@ export const keys = {
  * its only effect is that a handful of visitors could be counted twice that
  * day, which is why nothing in the system treats the visitor id as an identity.
  */
-export async function dailySalt(day: string): Promise<string> {
-  const store = analyticsStore({ consistency: 'strong' });
+export async function dailySalt(production: boolean, day: string): Promise<string> {
+  const store = analyticsStore(production, { consistency: 'strong' });
   const existing = await store.get(keys.salt(day));
   if (existing) return existing;
 

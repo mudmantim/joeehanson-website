@@ -11,7 +11,7 @@
 
 import type { Config, Context } from '@netlify/edge-functions';
 import { hmacHex, readCookie, verifyToken } from '../lib/crypto.ts';
-import { analyticsStore, dailySalt, keys, reportDay, reportHour } from '../lib/store.ts';
+import { analyticsStore, dailySalt, isProductionRequest, keys, reportDay, reportHour } from '../lib/store.ts';
 
 const MAX_BODY_BYTES = 4096;
 const MAX_EVENTS_PER_BATCH = 20;
@@ -45,6 +45,10 @@ export default async (req: Request, context: Context): Promise<Response> => {
   const incoming = Array.isArray(body?.events) ? body.events : [];
   if (incoming.length === 0 || incoming.length > MAX_EVENTS_PER_BATCH) return noContent();
 
+  // Real traffic and preview traffic go to different stores. Decided per
+  // request from the hostname, so a preview can never write into production.
+  const production = isProductionRequest(req);
+
   const now = new Date();
   const day = reportDay(now);
   const ua = req.headers.get('user-agent') ?? '';
@@ -55,7 +59,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
   // prove exclusion is working, and pruned after 7 days.
   const owner = await verifyToken(secret, 'own', readCookie(req, 'jh_own'));
   if (owner.valid) {
-    const store = analyticsStore();
+    const store = analyticsStore(production);
     await store.setJSON(keys.owner(day, crypto.randomUUID()), {
       at: now.toISOString(),
       count: incoming.length,
@@ -74,7 +78,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
   // HMAC of (ip, user-agent) under a salt that is random per day and destroyed
   // two days later. The IP is used here and never written anywhere.
   const ip = context.ip ?? '0.0.0.0';
-  const vid = (await hmacHex(await dailySalt(day), `${ip}|${ua}`)).slice(0, 16);
+  const vid = (await hmacHex(await dailySalt(production, day), `${ip}|${ua}`)).slice(0, 16);
 
   const events = [];
   for (const e of incoming) {
@@ -120,7 +124,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
     events,
   };
 
-  const store = analyticsStore();
+  const store = analyticsStore(production);
   await store.setJSON(keys.raw(day, reportHour(now), crypto.randomUUID()), record);
 
   return noContent();

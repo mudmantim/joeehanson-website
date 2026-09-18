@@ -20,7 +20,7 @@ import {
   timingSafeEqual,
   verifyToken,
 } from '../lib/crypto.ts';
-import { analyticsStore, reportDay } from '../lib/store.ts';
+import { analyticsStore, isProductionRequest, reportDay, storeNameFor } from '../lib/store.ts';
 import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
 
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
@@ -52,8 +52,8 @@ const html = (body: string, status = 200, headers: Record<string, string> = {}) 
  * the cost of guessing rather than enforcing an exact ceiling, which is the
  * honest description of what it does.
  */
-async function loginThrottle(ipHash: string): Promise<{ blocked: boolean; record: () => Promise<void> }> {
-  const store = analyticsStore({ consistency: 'strong' });
+async function loginThrottle(production: boolean, ipHash: string): Promise<{ blocked: boolean; record: () => Promise<void> }> {
+  const store = analyticsStore(production, { consistency: 'strong' });
   const key = `login/${ipHash}`;
   const now = Math.floor(Date.now() / 1000);
   const state = (await store.get(key, { type: 'json' })) as { n: number; since: number } | null;
@@ -68,13 +68,14 @@ async function loginThrottle(ipHash: string): Promise<{ blocked: boolean; record
   };
 }
 
-async function countPrefix(prefix: string): Promise<number> {
-  const { blobs } = await analyticsStore({ consistency: 'strong' }).list({ prefix });
+async function countPrefix(production: boolean, prefix: string): Promise<number> {
+  const { blobs } = await analyticsStore(production, { consistency: 'strong' }).list({ prefix });
   return blobs.length;
 }
 
 export default async (req: Request, context: Context): Promise<Response> => {
   const url = new URL(req.url);
+  const production = isProductionRequest(req);
   const path = url.pathname.replace(/\/+$/, '') || '/admin';
 
   const secret = Netlify.env.get('JH_SECRET');
@@ -90,7 +91,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
 
   // ---- Login --------------------------------------------------------------
   if (path === '/api/login' && req.method === 'POST') {
-    const throttle = await loginThrottle(ipHash);
+    const throttle = await loginThrottle(production, ipHash);
     if (throttle.blocked) {
       return html(renderLogin('Too many attempts. Wait 15 minutes.'), 429);
     }
@@ -162,7 +163,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
     // Strong consistency: a default (eventual) read can lag by up to a minute,
     // which would make "send an event, see it appear" untestable and would
     // make the dashboard look broken to anyone checking their own visit.
-    const store = analyticsStore({ consistency: 'strong' });
+    const store = analyticsStore(production, { consistency: 'strong' });
     const today = reportDay();
 
     const { blobs } = await store.list({ prefix: 'raw/' });
@@ -220,12 +221,14 @@ export default async (req: Request, context: Context): Promise<Response> => {
         engagementRate: sessions.size ? engagedSessions.size / sessions.size : 0,
       },
       byDay: [...days.entries()].sort().map(([day, batches]) => ({ day, batches })),
-      ownerExcludedToday: await countPrefix(`owner/${today}/`),
+      ownerExcludedToday: await countPrefix(production, `owner/${today}/`),
+      // Surfaced so the environment split is visible rather than assumed.
+      env: { production, store: storeNameFor(production), host: url.hostname },
     });
   }
 
   // ---- Dashboard ----------------------------------------------------------
-  return html(renderDashboard({ excluded: owner.valid, expiresAt: owner.expiresAt ?? null }));
+  return html(renderDashboard({ excluded: owner.valid, expiresAt: owner.expiresAt ?? null, production }));
 };
 
 export const config: Config = {

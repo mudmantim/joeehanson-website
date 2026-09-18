@@ -26,6 +26,10 @@ for (const file of FILES) {
   const before = failures.length;
   try {
     await mod.default(t);
+    // Named extra suites in the same file.
+    for (const [name, fn] of Object.entries(mod)) {
+      if (name !== 'default' && typeof fn === 'function') await fn(t);
+    }
   } catch (err) {
     failures.push(`${name} threw: ${err.message}`);
   }

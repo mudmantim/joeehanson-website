@@ -54,7 +54,7 @@ ${error ? `<p class="no" style="margin-bottom:1rem">${escapeHtml(error)}</p>` : 
 </form></body></html>`;
 }
 
-export function renderDashboard(owner: { excluded: boolean; expiresAt: number | null }): string {
+export function renderDashboard(owner: { excluded: boolean; expiresAt: number | null; production: boolean }): string {
   const status = owner.excluded
     ? `<span class="ok">EXCLUDED &#10003;</span> <span class="note">expires ${
         owner.expiresAt ? escapeHtml(new Date(owner.expiresAt * 1000).toISOString().slice(0, 10)) : 'unknown'
@@ -68,7 +68,9 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
 <title>Measurement</title><style>${SHELL}</style></head><body>
 
 <h1>Measurement</h1>
-<p class="sub">joeehanson.com &middot; phase 1</p>
+<p class="sub">joeehanson.com &middot; phase 1${
+   owner.production ? '' : ' &middot; <span class="no">PREVIEW DATA</span>'
+ }</p>
 
 <div class="card">
   <p><strong>This browser:</strong> ${status}</p>
@@ -81,6 +83,7 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
     <form method="get" action="/api/logout"><button type="submit">Sign out</button></form>
   </div>
   <p id="testout" class="note" style="margin-top:.8rem"></p>
+  <p id="envline" class="note" style="margin-top:.4rem"></p>
 </div>
 
 <div class="row" id="tiles"></div>
@@ -110,6 +113,9 @@ async function load() {
     ['Engagement rate', Math.round(t.engagementRate*100) + '%'],
     ['Your visits excluded today', d.ownerExcludedToday]
   ].map(([k,v]) => '<div class="tile"><b>'+v+'</b><span>'+k+'</span></div>').join('');
+  if (d.env) document.getElementById('envline').textContent =
+    'Reading ' + d.env.store + ' via ' + d.env.host +
+    (d.env.production ? ' — production data.' : ' — NOT production; these numbers are test data.');
   document.getElementById('days').innerHTML =
     (d.byDay||[]).map(x => '<tr><td>'+x.day+'</td><td>'+x.batches+'</td></tr>').join('')
     || '<tr><td colspan=2 class="note">Nothing recorded yet.</td></tr>';

@@ -82,3 +82,39 @@ export default function run(t) {
   t.ok(/pagehide/.test(client), 'client flushes on pagehide');
   t.ok(/sendBeacon/.test(client), 'client uses sendBeacon for the final flush');
 }
+
+/**
+ * Environment isolation must not depend on CONTEXT.
+ *
+ * Production, deploy previews and local dev shared one blob store until this
+ * was found: `Netlify.env.get('CONTEXT')` is undefined in the edge runtime, so
+ * the production check silently returned false everywhere and a preview write
+ * landed in production. The hostname is the signal now, and these assertions
+ * exist so it cannot quietly regress.
+ */
+export function environmentIsolation(t) {
+  const store = readFileSync(join(root, 'netlify/lib/store.ts'), 'utf8');
+  // Strip comments: the file documents the CONTEXT bug in prose, and matching
+  // that would be checking the explanation rather than the code.
+  const code = store.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  t.ok(/hostname === PRODUCTION_HOST/.test(code),
+       'production is determined by hostname');
+  t.ok(!/Netlify\.env\.get\(['"]CONTEXT['"]\)/.test(code),
+       'store.ts does not rely on CONTEXT in the edge runtime');
+  t.ok(/PRODUCTION_HOST = 'joeehanson\.com'/.test(code),
+       'the canonical production host is pinned');
+  t.ok(/export const PREVIEW_STORE_NAME/.test(code) && /export const STORE_NAME/.test(code),
+       'production and preview stores have distinct names');
+
+  // Every caller must pass the flag explicitly; a bare analyticsStore() would
+  // reintroduce an implicit, wrong default.
+  for (const f of ['netlify/edge-functions/collect.ts', 'netlify/edge-functions/admin.ts',
+                   'netlify/functions/prune.mts']) {
+    const src = readFileSync(join(root, f), 'utf8');
+    t.ok(!/analyticsStore\(\s*\)/.test(src), `${f} never calls analyticsStore() without an environment`);
+  }
+
+  const collect = readFileSync(join(root, 'netlify/edge-functions/collect.ts'), 'utf8');
+  t.ok(/isProductionRequest\(req\)/.test(collect), 'collector decides environment per request');
+}

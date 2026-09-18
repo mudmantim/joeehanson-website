@@ -11,7 +11,7 @@
  */
 
 import type { Config } from '@netlify/functions';
-import { analyticsStore, REPORT_TZ } from '../lib/store.ts';
+import { analyticsStore, isProductionProcess, REPORT_TZ } from '../lib/store.ts';
 
 const RETENTION_DAYS = { raw: 90, owner: 7, salt: 2 } as const;
 
@@ -23,7 +23,8 @@ function daysAgo(day: string, today: string): number {
 }
 
 export default async () => {
-  const store = analyticsStore();
+  // Node functions do see CONTEXT, unlike the edge runtime.
+  const store = analyticsStore(isProductionProcess());
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ }).format(new Date());
   const deleted: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
   const kept: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
