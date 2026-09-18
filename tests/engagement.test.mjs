@@ -102,3 +102,51 @@ export default function run(t) {
     t.equal(e.read(20 * SEC), 10 * SEC, 'alternating 1s visible / 1s hidden for 20s counts 10s');
   }
 }
+
+/**
+ * Session start and attribution binding.
+ *
+ * Found on production during Phase 3 verification: attribution was stored for
+ * the whole tab and never re-captured, so a visitor who arrived direct and came
+ * back hours later through a campaign link started a new session but kept the
+ * old attribution. The campaign got no credit and the visit read as direct.
+ */
+export function sessionCore(t) {
+  const src = readFileSync(join(root, 'public', 'script.js'), 'utf8');
+  const start = src.indexOf('/* @session-core:start');
+  const end = src.indexOf('/* @session-core:end */');
+  t.ok(start !== -1 && end > start, 'session core markers present in public/script.js');
+  const core = src.slice(start, end);
+  const { shouldStartNewSession, attributionIsStale } =
+    new Function(`${core}; return { shouldStartNewSession, attributionIsStale };`)();
+
+  const GAP = 30 * 60 * 1000;
+
+  t.ok(shouldStartNewSession(null, 0, 1000, GAP, false), 'no existing session starts one');
+  t.ok(!shouldStartNewSession('s1', 1000, 2000, GAP, false), 'an active session continues');
+  t.ok(shouldStartNewSession('s1', 0, GAP + 1, GAP, false), 'idling past the gap starts a new one');
+  t.ok(!shouldStartNewSession('s1', 0, GAP - 1, GAP, false), 'just inside the gap continues');
+  t.ok(shouldStartNewSession('s1', 1000, 2000, GAP, true),
+    'a tagged landing starts a new session even mid-visit — it is a new acquisition');
+
+  t.ok(attributionIsStale(null, 's1'), 'no stored attribution is stale');
+  t.ok(attributionIsStale({ sid: 'old', s: 'tiktok' }, 'new'),
+    'attribution from a previous session is stale — the bug this exists for');
+  t.ok(!attributionIsStale({ sid: 's1', s: 'tiktok' }, 's1'),
+    'attribution captured for this session is kept');
+  t.ok(attributionIsStale({ s: 'tiktok' }, 's1'),
+    'attribution with no session binding is treated as stale');
+
+  // The whole failing sequence, replayed.
+  let sid = null, last = 0, stored = null;
+  const visit = (now, tagged, capture) => {
+    if (shouldStartNewSession(sid, last, now, GAP, tagged)) sid = 'sid-' + now;
+    if (attributionIsStale(stored, sid)) stored = { sid, ...capture };
+    last = now;
+    return stored;
+  };
+  visit(0, false, { s: null });                                  // direct, morning
+  const afternoon = visit(4 * 60 * 60 * 1000, true, { s: 'tiktok', c: 'launch' });
+  t.equal(afternoon.s, 'tiktok', 'the afternoon campaign visit is attributed to tiktok');
+  t.equal(afternoon.c, 'launch', 'and carries the campaign');
+}
