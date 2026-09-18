@@ -407,6 +407,24 @@ function createEngagementTracker(options) {
 }
 /* @engagement-core:end */
 
+/* @session-core:start
+   When a session begins, and when the attribution attached to it is stale.
+   Pure so the rules can be replayed in tests without a browser. */
+function shouldStartNewSession(sid, lastActivity, now, gapMs, taggedLanding) {
+  if (!sid) return true;                       // nothing to continue
+  if (taggedLanding) return true;              // a campaign link is a new acquisition
+  return (now - lastActivity) > gapMs;         // idled out
+}
+
+function attributionIsStale(storedAttr, sid) {
+  // Attribution belongs to one session. Left unbound it survived for the whole
+  // tab, so a visitor who arrived direct and returned hours later through a
+  // campaign link kept the old attribution and the campaign got no credit.
+  if (!storedAttr) return true;
+  return storedAttr.sid !== sid;
+}
+/* @session-core:end */
+
 (function measurement() {
   var ENDPOINT = '/api/e';
   var HEARTBEAT_MS = 15000;      // of engaged time, not wall time
@@ -422,11 +440,21 @@ function createEngagementTracker(options) {
     try { return fn(); } catch (e) { return fallback; }
   };
 
+  // ---- Attribution parameters present on this URL ------------------------
+  var CAMPAIGN_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  var CLICK_ID_KEYS = ['igshid', 'igsh', 'ttclid', 'tt_medium', 'fbclid', 'twclid', 'gclid', 'msclkid'];
+  var params = new URLSearchParams(location.search);
+  var taggedLanding = CAMPAIGN_KEYS.concat(CLICK_ID_KEYS).some(function (key) { return params.has(key); });
+
   // ---- Session: 30 minutes of inactivity starts a new one ----------------
+  // A tagged landing also starts one. Arriving on a campaign link is a new
+  // acquisition even if the tab was already open, and without this the
+  // engagement from whatever the visitor was doing beforehand would be
+  // credited to the campaign.
   var now = Date.now();
   var sid = safe(function () { return sessionStorage.getItem('jh_sid'); }, null);
   var last = Number(safe(function () { return sessionStorage.getItem('jh_last'); }, 0)) || 0;
-  if (!sid || now - last > SESSION_GAP_MS) sid = uuid();
+  if (shouldStartNewSession(sid, last, now, SESSION_GAP_MS, taggedLanding)) sid = uuid();
   var touch = function () {
     safe(function () {
       sessionStorage.setItem('jh_sid', sid);
@@ -443,17 +471,22 @@ function createEngagementTracker(options) {
   //
   // Only raw values are captured. Deciding what they mean happens on the
   // server, so there is one implementation of that logic and it is tested.
-  var CLICK_ID_KEYS = ['igshid', 'igsh', 'ttclid', 'tt_medium', 'fbclid', 'twclid', 'gclid', 'msclkid'];
+  // Attribution is bound to the session it was captured for. Without that
+  // binding it survived for the whole tab: a visitor who arrived direct in the
+  // morning and came back through a campaign link in the afternoon started a
+  // new session but kept the old attribution, so the campaign got no credit
+  // and the visit read as direct.
   var attr = null;
   try { attr = JSON.parse(sessionStorage.getItem('jh_attr') || 'null'); } catch (e) { attr = null; }
+  if (attributionIsStale(attr, sid)) attr = null;
 
   if (!attr) {
-    var params = new URLSearchParams(location.search);
     var clickId = null;
     for (var ci = 0; ci < CLICK_ID_KEYS.length; ci++) {
       if (params.has(CLICK_ID_KEYS[ci])) { clickId = CLICK_ID_KEYS[ci]; break; }
     }
     attr = {
+      sid: sid,
       s: params.get('utm_source'), m: params.get('utm_medium'),
       c: params.get('utm_campaign'), ct: params.get('utm_content'),
       t: params.get('utm_term'), r: document.referrer || '', cid: clickId
