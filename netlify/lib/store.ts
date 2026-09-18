@@ -92,6 +92,8 @@ export const keys = {
   owner: (day: string, id: string) => `owner/${day}/${id}.json`,
   /** The visitor-hash salt for one day. Random, and deleted on rotation. */
   salt: (day: string) => `salt/${day}`,
+  /** One compacted day. Written once by the nightly job; kept indefinitely. */
+  rollup: (day: string) => `rollup/daily/${day}.json`,
 };
 
 /**

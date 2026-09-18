@@ -73,6 +73,7 @@ Ordinary visitors get **no cookies at all**. New-vs-returning comes from one
 | Prefix | Holds | Kept |
 |---|---|---|
 | `raw/<day>/<hour>/<uuid>.json` | One accepted batch | 90 days |
+| `rollup/daily/<day>.json` | One compacted day | indefinitely |
 | `owner/<day>/<uuid>.json` | Owner-excluded hits, diagnostic only | 7 days |
 | `salt/<day>` | That day's visitor-hash salt | 2 days |
 
@@ -140,8 +141,45 @@ Run it against a deploy preview, never production — it writes real events.
   current volume and will need rollups (Phase 2) long before it is slow.
 - Day boundaries are `America/New_York`, everywhere, deliberately.
 
+## Rollups and ranges
+
+`netlify/functions/rollup.mts` runs nightly at 04:07 ET, ten minutes before the
+prune job, so a day is always compacted before its raw events become eligible
+for deletion. Each closed day becomes one small blob kept permanently, which is
+what lets "all time" stay fast while raw events expire at 90 days.
+
+**Today is never rolled up.** It is still accumulating, and an aggregate written
+at noon would be wrong by evening, so the dashboard always recomputes today from
+raw. `dataFrom` on `/api/stats` reports how many days came from rollups and how
+many were computed live.
+
+Scheduled functions cannot be invoked by hand in production. The escape hatch if
+a rollup is ever wrong is to bump `ROLLUP_VERSION` in `netlify/lib/rollup.js`:
+every stored rollup then fails the version check, each day is recomputed from raw
+on the next read, and the nightly run rewrites them.
+
+All aggregation lives in `netlify/lib/rollup.js` -- plain ESM, imported unchanged
+by both the Deno edge runtime and the Node test runner, so the logic the
+dashboard runs is the logic the tests check.
+
+Ranges: `/api/stats?range=today|7d|30d|all` or `?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+A reversed custom range is swapped rather than rejected; a future end date is
+clamped to today. All day boundaries are America/New_York.
+
+## Reading the dashboard honestly
+
+**Visitors overcounts on any range longer than a day.** It is the sum of daily
+uniques, and the visitor hash is salted per day with a key that is destroyed, so
+recognising someone across days is cryptographically unavailable by design.
+Sessions is the figure that is accurate over any range. The dashboard labels the
+tile and the definitions panel says so in full.
+
+Devices are counted per batch received rather than per session, so they indicate
+mix rather than exact session counts.
+
+A session that spans midnight is counted in both days.
+
 ## Not built yet
 
-Phase 2 rollups and date ranges. Phase 3 UTM attribution and outbound
-streaming clicks. See the approved design for the campaign taxonomy PorchLight
-will conform to.
+Phase 3: UTM attribution and outbound streaming clicks. See the approved design
+for the campaign taxonomy PorchLight will conform to.
