@@ -12,8 +12,9 @@
 import type { Config, Context } from '@netlify/edge-functions';
 import { hmacHex, readCookie, verifyToken } from '../lib/crypto.ts';
 import { analyticsStore, dailySalt, isProductionRequest, keys, reportDay, reportHour } from '../lib/store.ts';
+import { classifyAttribution, classifyOutbound } from '../lib/attribution.js';
 
-const MAX_BODY_BYTES = 4096;
+const MAX_BODY_BYTES = 8192;   // attribution adds a little per batch
 const MAX_EVENTS_PER_BATCH = 20;
 const EVENT_TYPES = new Set(['pv', 'eng', 'out', 'end']);
 
@@ -86,7 +87,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
     if (!EVENT_TYPES.has(t)) continue;
     if (typeof e?.eid !== 'string' || typeof e?.sid !== 'string') continue;
 
-    events.push({
+    const event: Record<string, unknown> = {
       eid: e.eid.slice(0, 64),
       sid: e.sid.slice(0, 64),
       t,
@@ -95,7 +96,15 @@ export default async (req: Request, context: Context): Promise<Response> => {
       eng_ms: Number.isFinite(e?.eng_ms) ? Math.max(0, Math.min(Number(e.eng_ms), 86_400_000)) : 0,
       pv: Number.isFinite(e?.pv) ? Math.max(0, Math.min(Number(e.pv), 1000)) : 0,
       test: e?.test === true,
-    });
+    };
+
+    // Outbound destinations are classified here, not in the page. Only the
+    // host and path are kept -- both are public URLs, never personal data.
+    if (t === 'out' && e?.out && typeof e.out === 'object') {
+      event.out = classifyOutbound(e.out.host, e.out.path);
+    }
+
+    events.push(event);
   }
   if (events.length === 0) return noContent();
 
@@ -110,8 +119,13 @@ export default async (req: Request, context: Context): Promise<Response> => {
     }
   }
 
+  // Where this visit came from. Precedence is utm > click id > referrer >
+  // direct, and `basis` records which one answered, so the dashboard can tell
+  // a tagged link apart from a guess.
+  const attribution = classifyAttribution(body?.attr, new URL(req.url).hostname);
+
   const record = {
-    v: 1,
+    v: 2,
     vid,
     at: now.toISOString(),
     day,
@@ -121,6 +135,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
     ref_host: refHost,
     new: body?.new === true,
     q: suspect ? 'suspect' : 'ok',
+    attr: attribution,
     events,
   };
 

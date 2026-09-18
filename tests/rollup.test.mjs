@@ -186,3 +186,85 @@ export function sourceSelection(t) {
   t.equal(chooseSource('2026-09-17', today, { day: '2026-09-17' }), 'live',
     'a rollup with no version is ignored');
 }
+
+/** Attribution and outbound aggregation (Phase 3). */
+export function attributionAggregation(t) {
+  const D = '2026-09-18';
+  let i = 0;
+  const e = (sid, type, extra = {}) => ({ eid: `a${++i}`, sid, t: type, ts: 1, path: '/', eng_ms: 0, pv: 1, ...extra });
+  const r = (attr, events, over = {}) =>
+    ({ vid: 'v1', day: D, dev: 'mobile', cc: 'US', new: true, q: 'ok', attr, events, ...over });
+
+  const tiktok = { source: 'tiktok', medium: 'social', campaign: 'hmha-launch', content: 'sds-clip-01', term: 'same-damn-shame', basis: 'utm' };
+  const insta  = { source: 'instagram', medium: 'social', campaign: 'hmha-launch', content: 'sds-post-01', term: 'same-damn-shame', basis: 'utm' };
+  const direct = { source: 'direct', medium: 'none', campaign: null, content: null, basis: 'direct' };
+  const spot = { host: 'open.spotify.com', path: '/track/abc', service: 'spotify', kind: 'streaming' };
+  const ig   = { host: 'instagram.com', path: '/x', service: 'instagram', kind: 'social' };
+
+  const day = aggregateDay(D, [
+    // TikTok: two sessions, one clicks through to Spotify.
+    r(tiktok, [e('t1', 'pv'), e('t1', 'end', { eng_ms: 40000 }), e('t1', 'out', { out: spot })]),
+    r(tiktok, [e('t2', 'pv'), e('t2', 'end', { eng_ms: 5000 })]),
+    // Instagram: one session, clicks a social link only.
+    r(insta,  [e('i1', 'pv'), e('i1', 'out', { out: ig })]),
+    // Direct: one session, nothing.
+    r(direct, [e('d1', 'pv')]),
+  ]);
+
+  t.equal(day.sessions, 4, 'four sessions');
+  t.equal(day.outboundClicks, 2, 'two outbound clicks in total');
+  t.equal(day.streamingClicks, 1, 'one of them was a streaming service');
+  t.equal(day.sessionsWithStreaming, 1, 'one session showed listening intent');
+
+  t.equal(day.sources['tiktok / social'].sessions, 2, 'tiktok has two sessions');
+  t.equal(day.sources['instagram / social'].sessions, 1, 'instagram has one');
+  t.equal(day.sources['direct / none'].sessions, 1, 'direct has one');
+  t.equal(day.sources['tiktok / social'].streaming, 1, 'tiktok produced the streaming click');
+  t.equal(day.sources['instagram / social'].streaming, 0,
+    'a social outbound click is not counted as listening intent');
+
+  t.equal(day.campaigns['hmha-launch / sds-clip-01'].sessions, 2, 'the TikTok clip is its own row');
+  t.equal(day.campaigns['hmha-launch / sds-post-01'].sessions, 1, 'the Instagram post is a separate row');
+  t.equal(day.campaigns['(untagged)'].sessions, 1, 'untagged traffic groups separately');
+  t.equal(day.campaigns['hmha-launch / sds-clip-01'].intentSessions, 1,
+    'intent is attributed to the post that brought the visitor in');
+
+  t.equal(day.outboundByService.spotify, 1, 'spotify click tallied');
+  t.equal(day.outboundByService.instagram, 1, 'social click tallied separately');
+  t.equal(day.outboundDestinations['spotify|/track/abc'], 1, 'the exact track is recorded');
+  t.ok(!('instagram|/x' in day.outboundDestinations), 'only streaming destinations are listed');
+  t.equal(day.basis.utm, 3, 'three sessions were attributed from tagged links');
+  t.equal(day.basis.direct, 1, 'one was direct');
+
+  // An outbound click alone makes a session engaged.
+  const clicky = aggregateDay(D, [r(tiktok, [e('c1', 'pv'), e('c1', 'out', { out: spot })])]);
+  t.equal(clicky.engagedSessions, 1, 'a session that clicked through counts as engaged');
+
+  // Attribution is fixed by the batch that opens the session.
+  const later = aggregateDay(D, [
+    r(tiktok, [e('s1', 'pv')]),
+    r(insta,  [e('s1', 'out', { out: spot })]),
+  ]);
+  t.equal(later.sources['tiktok / social'].sessions, 1, 'the opening batch owns the session');
+  t.ok(!('instagram / social' in later.sources), 'a later batch cannot re-attribute it');
+  t.equal(later.sources['tiktok / social'].streaming, 1,
+    'and the later click is credited to the original source');
+
+  // Combine across days.
+  const c = combineDays([day, day]);
+  t.equal(c.sources['tiktok / social'].sessions, 4, 'source tables merge across days');
+  t.equal(c.campaigns['hmha-launch / sds-clip-01'].sessions, 4, 'campaign tables merge');
+  t.equal(c.outboundByService.spotify, 2, 'service counts merge');
+  t.equal(c.streamingClicks, 2, 'streaming clicks add');
+  t.equal(c.intentRate, 2 / 8, 'intent rate is sessions-with-streaming over sessions');
+
+  // Empty is empty, not NaN.
+  const empty = combineDays([]);
+  t.equal(empty.intentRate, 0, 'intent rate on no data is zero');
+  t.equal(Object.keys(empty.sources).length, 0, 'no phantom source rows');
+
+  // Old rollups lacking the new fields must not poison a merge.
+  const legacy = combineDays([{ v: 1, sessions: 3, pageviews: 3 }, day]);
+  t.equal(legacy.sessions, 7, 'a pre-Phase-3 rollup still contributes its totals');
+  t.equal(legacy.outboundClicks, 2, 'and contributes zero to the new fields rather than NaN');
+}

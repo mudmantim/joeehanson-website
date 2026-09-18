@@ -435,6 +435,47 @@ function createEngagementTracker(options) {
   };
   touch();
 
+  // ---- Attribution: captured once, at the start of a session -------------
+  // Session-scoped on purpose. A visitor lands on a tagged link, reads for a
+  // while, then clicks through to Spotify -- and that click has to be
+  // attributable to the post that brought them. Per-pageview attribution would
+  // lose it, which is the whole question this is here to answer.
+  //
+  // Only raw values are captured. Deciding what they mean happens on the
+  // server, so there is one implementation of that logic and it is tested.
+  var CLICK_ID_KEYS = ['igshid', 'igsh', 'ttclid', 'tt_medium', 'fbclid', 'twclid', 'gclid', 'msclkid'];
+  var attr = null;
+  try { attr = JSON.parse(sessionStorage.getItem('jh_attr') || 'null'); } catch (e) { attr = null; }
+
+  if (!attr) {
+    var params = new URLSearchParams(location.search);
+    var clickId = null;
+    for (var ci = 0; ci < CLICK_ID_KEYS.length; ci++) {
+      if (params.has(CLICK_ID_KEYS[ci])) { clickId = CLICK_ID_KEYS[ci]; break; }
+    }
+    attr = {
+      s: params.get('utm_source'), m: params.get('utm_medium'),
+      c: params.get('utm_campaign'), ct: params.get('utm_content'),
+      t: params.get('utm_term'), r: document.referrer || '', cid: clickId
+    };
+    safe(function () { sessionStorage.setItem('jh_attr', JSON.stringify(attr)); });
+
+    // Take the campaign parameters out of the address bar once they are
+    // recorded. Someone sharing the URL then shares a clean link rather than
+    // one carrying another person's campaign tags, and the bar stays quiet,
+    // which this site cares about.
+    safe(function () {
+      var dirty = false;
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
+        .concat(CLICK_ID_KEYS)
+        .forEach(function (k) { if (params.has(k)) { params.delete(k); dirty = true; } });
+      if (dirty && history.replaceState) {
+        var q = params.toString();
+        history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+      }
+    });
+  }
+
   // ---- New vs returning, without an identifier ---------------------------
   var month = new Date().toISOString().slice(0, 7);
   var firstSeen = safe(function () { return localStorage.getItem('jh_fs'); }, null);
@@ -470,6 +511,7 @@ function createEngagementTracker(options) {
     var payload = JSON.stringify({
       events: queue.splice(0, queue.length),
       ref: document.referrer || '',
+      attr: attr,
       new: isNew,
       wd: navigator.webdriver === true
     });
@@ -523,6 +565,24 @@ function createEngagementTracker(options) {
       send(true);
     }
   }, 5000);
+
+  // ---- Outbound clicks ---------------------------------------------------
+  // sendBeacon is fire-and-forget: it does not delay or cancel the navigation.
+  // Deliberately NOT preventDefault-then-navigate, which breaks cmd-click and
+  // middle-click and makes every outbound link feel slower.
+  function onOutbound(e) {
+    var el = e.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var u;
+    try { u = new URL(a.getAttribute('href'), location.href); } catch (err) { return; }
+    if (!/^https?:$/.test(u.protocol) || u.host === location.host) return;
+
+    enqueue('out', { out: { host: u.host, path: u.pathname } });
+    send(true);
+  }
+  addEventListener('click', onOutbound, true);
+  addEventListener('auxclick', onOutbound, true);   // middle-click opens a tab too
 
   // ---- Final flush -------------------------------------------------------
   addEventListener('pagehide', function () {
