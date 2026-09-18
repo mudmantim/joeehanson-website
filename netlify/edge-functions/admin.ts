@@ -20,7 +20,8 @@ import {
   timingSafeEqual,
   verifyToken,
 } from '../lib/crypto.ts';
-import { analyticsStore, isProductionRequest, reportDay, storeNameFor } from '../lib/store.ts';
+import { analyticsStore, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
+import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange } from '../lib/rollup.js';
 import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
 
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
@@ -166,61 +167,79 @@ export default async (req: Request, context: Context): Promise<Response> => {
     const store = analyticsStore(production, { consistency: 'strong' });
     const today = reportDay();
 
-    const { blobs } = await store.list({ prefix: 'raw/' });
-    const days = new Map<string, number>();
-    const sessions = new Set<string>();
-    const visitors = new Set<string>();
-    const engagedSessions = new Set<string>();
-    const seenEventIds = new Set<string>();
-    // Request-local: an edge isolate is reused across requests, so any of this
-    // held at module scope would accumulate between invocations.
-    const sessionEngagement = new Map<string, number>();
-    let pageviews = 0;
-    let engagedMs = 0;
-    let suspect = 0;
+    // Which days exist at all, so "all time" has a real starting point rather
+    // than an invented one.
+    const rawKeys = (await store.list({ prefix: 'raw/' })).blobs;
+    const rollupKeys = (await store.list({ prefix: 'rollup/daily/' })).blobs;
+    const daysWithData = new Set<string>();
+    for (const b of rawKeys) {
+      const d = b.key.split('/')[1];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) daysWithData.add(d);
+    }
+    for (const b of rollupKeys) {
+      const d = b.key.split('/').pop()?.replace('.json', '') ?? '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) daysWithData.add(d);
+    }
+    const earliest = [...daysWithData].sort()[0];
 
-    for (const b of blobs) {
-      const rec = (await store.get(b.key, { type: 'json' })) as any;
-      if (!rec) continue;
-      days.set(rec.day, (days.get(rec.day) ?? 0) + 1);
-      if (rec.q === 'suspect') suspect++;
-      visitors.add(`${rec.day}|${rec.vid}`);
+    const range = resolveRange(
+      { range: url.searchParams.get('range') ?? undefined,
+        from: url.searchParams.get('from') ?? undefined,
+        to: url.searchParams.get('to') ?? undefined },
+      today,
+      earliest,
+    );
 
-      for (const e of rec.events ?? []) {
-        // Duplicate event ids are counted once, no matter how many times a
-        // retried beacon delivered them.
-        if (seenEventIds.has(e.eid)) continue;
-        seenEventIds.add(e.eid);
+    const days = enumerateDays(range.from, range.to);
+    const perDay = [];
+    let fromRollups = 0;
+    let computedLive = 0;
 
-        sessions.add(e.sid);
-        if (e.t === 'pv') pageviews++;
-        if (e.t === 'end' || e.t === 'eng') {
-          // eng_ms is cumulative per session; keep the largest seen.
-          const prev = sessionEngagement.get(e.sid) ?? 0;
-          if (e.eng_ms > prev) sessionEngagement.set(e.sid, e.eng_ms);
-        }
+    for (const day of days) {
+      // A closed day reads its stored aggregate. Today is always recomputed,
+      // because it is still accumulating and a stored copy would be stale.
+      let rollup = null;
+      if (day < today) {
+        const stored = (await store.get(keys.rollup(day), { type: 'json' })) as any;
+        if (chooseSource(day, today, stored) === 'rollup') { rollup = stored; fromRollups++; }
       }
+
+      if (!rollup) {
+        const dayBlobs = (await store.list({ prefix: `raw/${day}/` })).blobs;
+        if (dayBlobs.length === 0 && day !== today) {
+          perDay.push(aggregateDay(day, []));
+          continue;
+        }
+        const records = [];
+        for (const b of dayBlobs) {
+          const rec = await store.get(b.key, { type: 'json' });
+          if (rec) records.push(rec);
+        }
+        rollup = aggregateDay(day, records);
+        computedLive++;
+      }
+      perDay.push(rollup);
     }
 
-    for (const [sid, ms] of sessionEngagement) {
-      engagedMs += ms;
-      if (ms >= 10_000) engagedSessions.add(sid);
-    }
+    const totals = combineDays(perDay);
 
     return json({
       asOf: new Date().toISOString(),
       today,
-      totals: {
-        visitorDays: visitors.size,
-        sessions: sessions.size,
-        pageviews,
-        uniqueEvents: seenEventIds.size,
-        rawBlobs: blobs.length,
-        suspectBatches: suspect,
-        avgEngagedMs: sessions.size ? Math.round(engagedMs / sessions.size) : 0,
-        engagementRate: sessions.size ? engagedSessions.size / sessions.size : 0,
-      },
-      byDay: [...days.entries()].sort().map(([day, batches]) => ({ day, batches })),
+      timezone: 'America/New_York',
+      range,
+      totals,
+      byDay: perDay.map((d) => ({
+        day: d.day,
+        visitors: d.visitors,
+        sessions: d.sessions,
+        pageviews: d.pageviews,
+        avgEngagedMs: d.sessions ? Math.round(d.engagedMsTotal / d.sessions) : 0,
+      })),
+      devices: totals.devices,
+      countries: totals.countries,
+      newVsReturning: { new: totals.newSessions, returning: totals.returningSessions },
+      dataFrom: { rollups: fromRollups, computedLive, daysInRange: days.length, earliestDay: earliest ?? null },
       ownerExcludedToday: await countPrefix(production, `owner/${today}/`),
       // Surfaced so the environment split is visible rather than assumed.
       env: { production, store: storeNameFor(production), host: url.hostname },
