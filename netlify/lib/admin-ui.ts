@@ -227,9 +227,26 @@ function bar2(items, colors) {
     : '<p class="note">Nothing recorded in this range.</p>';
 }
 
+/* Responses can arrive out of order: a 30-day query reads far more than a
+   one-day query and can still be in flight when a later click resolves. Without
+   a guard the slower, older response would land last and the dashboard would
+   show one range's numbers under another range's label -- silently wrong, which
+   is the one thing this dashboard must never be. Only the newest request is
+   allowed to paint. */
+let loadSeq = 0;
+
 async function load() {
+  const seq = ++loadSeq;
   const qs = new URLSearchParams(current).toString();
-  const d = await (await fetch('/api/stats?'+qs, {cache:'no-store'})).json();
+  document.getElementById('rangelabel').textContent = 'loading\u2026';
+  let d;
+  try {
+    d = await (await fetch('/api/stats?'+qs, {cache:'no-store'})).json();
+  } catch (err) {
+    if (seq === loadSeq) document.getElementById('rangelabel').textContent = 'Could not load stats.';
+    return;
+  }
+  if (seq !== loadSeq) return;   // a newer request has already been issued
   const t = d.totals;
 
   // A custom range's label is already the dates; don't print them twice.
