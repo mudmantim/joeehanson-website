@@ -134,6 +134,7 @@ export default function run(t) {
     t.equal(c.engagementRate, 1, 'both sessions engaged');
     t.equal(c.visitorDaysSummed, 2,
       'the same visitor on two days counts twice — daily salt rotation makes cross-day identity unavailable');
+    t.equal(c.uniqueEvents, 4, 'unique event counts carry through to range totals');
     t.equal(c.devices.mobile, 2, 'device counts merge');
     t.equal(c.countries.US, 2, 'country counts merge');
   }

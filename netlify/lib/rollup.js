@@ -118,6 +118,7 @@ export function combineDays(rollups) {
   let returningSessions = 0;
   let suspectBatches = 0;
   let rawBatches = 0;
+  let uniqueEvents = 0;
 
   for (const r of rollups) {
     if (!r) continue;
@@ -130,6 +131,7 @@ export function combineDays(rollups) {
     returningSessions += r.returningSessions ?? 0;
     suspectBatches += r.suspectBatches ?? 0;
     rawBatches += r.rawBatches ?? 0;
+    uniqueEvents += r.uniqueEvents ?? 0;
     for (const k of Object.keys(devices)) devices[k] += r.devices?.[k] ?? 0;
     for (const [cc, n] of Object.entries(r.countries ?? {})) countries[cc] = (countries[cc] ?? 0) + n;
   }
@@ -146,6 +148,7 @@ export function combineDays(rollups) {
     countries,
     suspectBatches,
     rawBatches,
+    uniqueEvents,
     avgEngagedMs: sessions ? Math.round(engagedMsTotal / sessions) : 0,
     engagementRate: sessions ? engagedSessions / sessions : 0,
     pagesPerSession: sessions ? pageviews / sessions : 0,
