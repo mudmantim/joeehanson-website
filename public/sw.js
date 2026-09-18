@@ -1,4 +1,4 @@
-const CACHE = 'joeehanson-v4';
+const CACHE = 'joeehanson-v5';
 
 const PRECACHE = [
   '/',
@@ -45,6 +45,13 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+
+  // The private dashboard and its API must never be cached. Verified in
+  // Phase 0: without this, the first /admin response is stored permanently
+  // and the dashboard silently shows the same numbers forever. It would also
+  // let a cached page outlive a sign-out.
+  const url = new URL(e.request.url);
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin')) return;
 
   e.respondWith(
     caches.match(e.request).then((cached) => {

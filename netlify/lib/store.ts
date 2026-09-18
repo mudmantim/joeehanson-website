@@ -1,0 +1,98 @@
+/**
+ * Blob store access and the day/key conventions every other file relies on.
+ *
+ * Two rules hold everywhere:
+ *
+ *   1. Writes are append-only under a unique key. Netlify Blobs has no
+ *      concurrency control and last write wins, so a read-increment-write
+ *      counter would silently lose events under any concurrency at all.
+ *
+ *   2. Production data only ever lands in the global store. Any non-production
+ *      context (branch deploys, deploy previews, local dev) writes to a
+ *      deploy-scoped store, so preview verification cannot pollute real numbers.
+ */
+
+import { getStore } from '@netlify/blobs';
+
+export const STORE_NAME = 'jh-analytics';
+/**
+ * Everything that is not a production deploy writes here instead.
+ *
+ * Isolation is by store *name* rather than by `getDeployStore`, because a
+ * deploy-scoped store requires an explicit region when it is opened from an
+ * edge function and a global store does not. One name per environment keeps
+ * branch-deploy and local traffic out of the real numbers with no extra
+ * configuration to get wrong.
+ */
+export const PREVIEW_STORE_NAME = 'jh-analytics-preview';
+
+/** Reporting timezone. Every day boundary in this system is New York's. */
+export const REPORT_TZ = 'America/New_York';
+
+type StoreOpts = { consistency?: 'strong' | 'eventual' };
+
+function isProduction(): boolean {
+  // `CONTEXT` is "production" only for a production deploy; branch deploys and
+  // deploy previews get "branch-deploy" / "deploy-preview".
+  // Both globals are referenced defensively: `Netlify` exists in the edge
+  // runtime, `process` in the Node one, and a bare reference to whichever is
+  // absent throws a ReferenceError rather than yielding undefined.
+  const g = globalThis as any;
+  const ctx =
+    g.Netlify?.env?.get?.('CONTEXT') ??
+    (typeof process !== 'undefined' ? process.env?.CONTEXT : undefined);
+  return ctx === 'production';
+}
+
+export function analyticsStore(opts: StoreOpts = {}) {
+  return getStore({ name: isProduction() ? STORE_NAME : PREVIEW_STORE_NAME, ...opts });
+}
+
+/** `YYYY-MM-DD` in the reporting timezone, not UTC and not the visitor's zone. */
+export function reportDay(at: Date = new Date()): string {
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ }).format(at);
+}
+
+/** `HH` in the reporting timezone, used only to keep day directories shallow. */
+export function reportHour(at: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: REPORT_TZ,
+    hour: '2-digit',
+    hour12: false,
+  }).format(at);
+}
+
+export const keys = {
+  /** One blob per accepted batch. Unique key, never overwritten. */
+  raw: (day: string, hour: string, id: string) => `raw/${day}/${hour}/${id}.json`,
+  /** Owner-excluded hits. Diagnostic only, pruned after 7 days. */
+  owner: (day: string, id: string) => `owner/${day}/${id}.json`,
+  /** The visitor-hash salt for one day. Random, and deleted on rotation. */
+  salt: (day: string) => `salt/${day}`,
+};
+
+/**
+ * The daily salt for visitor hashing.
+ *
+ * Random per day and deleted by the prune job two days later, so yesterday's
+ * hashes cannot be recomputed from anything we still hold — the property that
+ * makes the visitor id genuinely unlinkable across days rather than merely
+ * un-joined.
+ *
+ * Read with strong consistency because a stale miss would mint a second salt
+ * for the same day. A race is still possible in the first moments of a new day;
+ * its only effect is that a handful of visitors could be counted twice that
+ * day, which is why nothing in the system treats the visitor id as an identity.
+ */
+export async function dailySalt(day: string): Promise<string> {
+  const store = analyticsStore({ consistency: 'strong' });
+  const existing = await store.get(keys.salt(day));
+  if (existing) return existing;
+
+  const fresh = [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  await store.set(keys.salt(day), fresh);
+  return fresh;
+}
