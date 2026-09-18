@@ -179,7 +179,48 @@ mix rather than exact session counts.
 
 A session that spans midnight is counted in both days.
 
+## Attribution
+
+Standard UTMs. The vocabulary PorchLight generates links against is
+`docs/CAMPAIGN-TAXONOMY.md`; the canonical list in code is
+`netlify/lib/attribution.js`.
+
+Precedence is **utm > platform click id > referrer > direct**, and every session
+records which one answered in `basis`. The dashboard prints the mix, because "we
+know, the link was tagged" and "we guessed from a referrer" are different claims.
+
+An unrecognised source is **kept verbatim and flagged**, never folded into
+"other" -- a typo should look like a typo rather than quietly taking its traffic
+somewhere else.
+
+**Attribution is fixed when a session opens and does not move.** A visitor
+arrives on a tagged link, reads for five minutes, then clicks through to
+Spotify: that click is credited to the post that brought them. Per-pageview
+attribution would lose exactly the thing worth knowing.
+
+Campaign parameters are stripped from the address bar with `history.replaceState`
+once recorded, so a shared URL does not carry someone else's tags.
+
+The page captures raw values only; classification happens in the collector, so
+there is one implementation and it is tested.
+
+## Outbound clicks
+
+A capture-phase listener on `click` and `auxclick` beacons any cross-origin
+link. **Never preventDefault-then-navigate** -- that breaks cmd-click and
+middle-click and makes every outbound link feel slower. `sendBeacon` does not
+delay or cancel the navigation.
+
+Only the destination host and path are stored, both public URLs.
+
+Clicks to a music service count as **intent**; clicks to Instagram or TikTok are
+recorded as outbound but not as intent, because following is not listening.
+`intentRate` is the share of sessions producing at least one streaming click --
+the number that separates a clip that got views from a clip that sent someone to
+press play.
+
 ## Not built yet
 
-Phase 3: UTM attribution and outbound streaming clicks. See the approved design
-for the campaign taxonomy PorchLight will conform to.
+Everything in the approved design is built. Natural next steps, none committed:
+per-song landing pages, a scheduled export for backup, and a summary endpoint if
+Mudman Command should ever consume metrics.

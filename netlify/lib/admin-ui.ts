@@ -138,6 +138,28 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
 </div>
 
 <div class="card">
+  <p class="sub" style="margin:0 0 .8rem">Where visits came from</p>
+  <div id="sources"></div>
+</div>
+
+<div class="card">
+  <p class="sub" style="margin:0 0 .2rem">Campaign performance</p>
+  <p class="note" style="margin-bottom:.8rem">Which post actually sent someone to listen.</p>
+  <div id="campaigns"></div>
+</div>
+
+<div class="row">
+  <div class="card" style="flex:1;min-width:260px">
+    <p class="sub" style="margin:0 0 .8rem">Outbound clicks</p>
+    <div id="outbound"></div>
+  </div>
+  <div class="card" style="flex:1;min-width:260px">
+    <p class="sub" style="margin:0 0 .8rem">Top streaming destinations</p>
+    <div id="destinations"></div>
+  </div>
+</div>
+
+<div class="card">
   <details>
     <summary>How every number is defined</summary>
     <dl>
@@ -177,8 +199,36 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
       <dd>Visits from browsers you marked as yours. Never included in anything above.
       Kept 7 days, purely so you can see exclusion working.</dd>
 
+      <dt>To streaming / Intent rate</dt>
+      <dd>Outbound clicks to a music service (Spotify, Apple Music, YouTube,
+      Deezer, Bandcamp and friends), and the share of sessions that produced at
+      least one. Clicks to Instagram or TikTok are counted as outbound but
+      <em>not</em> as intent — following is not listening. This is the number
+      that separates a clip that got views from a clip that sent someone to
+      press play.</dd>
+
+      <dt>How a source is decided</dt>
+      <dd>In order: a <code>utm_source</code> on the link, then a platform click
+      id, then the referring site, then direct. The table marks which one
+      answered. <strong>Tagged links are the only reliable signal</strong> —
+      Instagram and TikTok in-app browsers routinely strip the referrer, so
+      untagged traffic from exactly the places you care about most tends to
+      land in "direct".</dd>
+
+      <dt>Campaign / content</dt>
+      <dd>From <code>utm_campaign</code> and <code>utm_content</code>.
+      Content is the individual post, which is what separates the Same Damn
+      Shame TikTok clip from the Same Damn Shame Instagram post. Untagged
+      traffic groups under a single row rather than being scattered.</dd>
+
+      <dt>Attribution is per session, not per pageview</dt>
+      <dd>It is fixed when the session opens and stays put, so a click through
+      to Spotify five minutes later is still credited to the post that brought
+      the visitor in.</dd>
+
       <dt>What is not here yet</dt>
-      <dd>Traffic sources, campaigns and outbound streaming clicks arrive in Phase 3.</dd>
+      <dd>Everything in the approved design is now built. Rollups older than
+      Phase 3 are recomputed automatically rather than shown with empty tables.</dd>
     </dl>
   </details>
 </div>
@@ -235,6 +285,31 @@ function bar2(items, colors) {
    allowed to paint. */
 let loadSeq = 0;
 
+/* A sortable-by-nothing, deliberately plain table. Rows are ordered by
+   sessions descending so the answer is the top row. */
+function table(rows, firstHeader) {
+  if (!rows.length) return '<p class="note">Nothing recorded in this range.</p>';
+  const head = '<tr><th>'+esc(firstHeader)+'</th><th>Sessions</th><th>Avg engaged</th>'+
+    '<th>To streaming</th><th>Intent</th></tr>';
+  const body = rows.map(([k, v]) => {
+    const avg = v.sessions ? Math.round(v.engagedMs / v.sessions) : 0;
+    const intent = v.sessions ? v.intentSessions / v.sessions : 0;
+    return '<tr><td>'+esc(k)+'</td><td>'+v.sessions+'</td><td>'+fmtMs(avg)+'</td><td>'+
+      v.streaming+'</td><td>'+pct(intent)+'</td></tr>';
+  }).join('');
+  return '<table><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+}
+
+function countTable(obj, firstHeader, transform) {
+  const rows = Object.entries(obj || {}).filter(([,n]) => n > 0).sort((a,b) => b[1]-a[1]).slice(0, 12);
+  if (!rows.length) return '<p class="note">Nothing recorded in this range.</p>';
+  return '<table><thead><tr><th>'+esc(firstHeader)+'</th><th>Clicks</th></tr></thead><tbody>'+
+    rows.map(([k,n]) => '<tr><td>'+esc(transform ? transform(k) : k)+'</td><td>'+n+'</td></tr>').join('')+
+    '</tbody></table>';
+}
+
+const bySessions = (obj) => Object.entries(obj || {}).sort((a,b) => b[1].sessions - a[1].sessions).slice(0, 15);
+
 async function load() {
   const seq = ++loadSeq;
   const qs = new URLSearchParams(current).toString();
@@ -261,6 +336,8 @@ async function load() {
     ['Pageviews', t.pageviews],
     ['Avg engaged', fmtMs(t.avgEngagedMs)],
     ['Engagement rate', pct(t.engagementRate)],
+    ['To streaming', t.streamingClicks || 0],
+    ['Intent rate', pct(t.intentRate || 0)],
     ['Excluded today', d.ownerExcludedToday]
   ].map(([k,v]) => '<div class="tile"><b>'+v+'</b><span>'+k+'</span></div>').join('');
 
@@ -275,6 +352,17 @@ async function load() {
     bar2(Object.entries(d.devices||{}).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]), [AMBER,DIM,FAINT]);
   document.getElementById('newret').innerHTML =
     bar2([['New', d.newVsReturning.new],['Returning', d.newVsReturning.returning]].filter(([,v])=>v>0), [AMBER,DIM]);
+
+  document.getElementById('sources').innerHTML = table(bySessions(d.sources), 'Source / medium') +
+    (d.basis ? '<p class="note" style="margin-top:.7rem">Attributed from: ' +
+      Object.entries(d.basis).sort((a,b)=>b[1]-a[1])
+        .map(([k,n]) => esc(k) + ' ' + n).join(' \u00b7 ') +
+      '. Only <em>utm</em> is a tagged link; the rest are inferred.</p>' : '');
+
+  document.getElementById('campaigns').innerHTML = table(bySessions(d.campaigns), 'Campaign / content');
+  document.getElementById('outbound').innerHTML = countTable(d.outboundByService, 'Destination');
+  document.getElementById('destinations').innerHTML =
+    countTable(d.outboundDestinations, 'Track', k => k.replace('|', '  '));
 
   if (d.env) document.getElementById('envline').textContent =
     'Reading ' + d.env.store + ' via ' + d.env.host +

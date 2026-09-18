@@ -8,6 +8,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
+import { precacheState } from '../scripts/precache-lock.mjs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,4 +60,38 @@ export default function run(t) {
       `precache entry is not private: ${entry}`,
     );
   }
+}
+
+/**
+ * Precached content and the cache name must change together.
+ *
+ * Bumping CACHE is the only thing that makes a returning visitor pick up new
+ * files. Editing a precached file without bumping it leaves every existing
+ * visitor on the old copy indefinitely -- silently, with the site still
+ * working, which is why nobody notices.
+ *
+ * This nearly shipped in Phase 3: script.js gained the whole attribution
+ * collector while the cache name stayed at v5.
+ */
+export function precacheLock(t) {
+  const live = precacheState();
+  const lockPath = join(root, 'tests', 'precache-lock.json');
+
+  t.ok(existsSync(lockPath), 'tests/precache-lock.json exists');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+
+  if (live.hash === lock.hash) {
+    t.equal(live.cache, lock.cache, 'precached content is unchanged, so the cache name is unchanged');
+  } else {
+    t.ok(
+      live.cache !== lock.cache,
+      `precached content changed but CACHE is still ${live.cache} — bump it in public/sw.js, ` +
+      'then run `node scripts/precache-lock.mjs`. Without the bump, every returning ' +
+      'visitor keeps the old files forever.',
+    );
+    t.ok(false,
+      'precache lock is stale — run `node scripts/precache-lock.mjs` to record the new contents');
+  }
+
+  t.equal(live.entries, lock.entries, 'the precache entry count matches the lock');
 }

@@ -11,7 +11,12 @@
 
 /** @typedef {{vid:string, day:string, dev:string, cc:string|null, new:boolean, q:string, events:Array<object>}} RawRecord */
 
-export const ROLLUP_VERSION = 1;
+import { sourceKey, campaignKey, STREAMING_SERVICES } from './attribution.js';
+
+// Bumped for Phase 3: rollups written before attribution existed lack the
+// sources/campaigns/outbound breakdowns, so they are recomputed rather than
+// shown with silently empty tables.
+export const ROLLUP_VERSION = 2;
 
 /** A session counts as engaged at or above this. Matches GA4's definition. */
 export const ENGAGED_MS = 10_000;
@@ -29,8 +34,10 @@ const emptyDevices = () => ({ mobile: 0, tablet: 0, desktop: 0 });
 export function aggregateDay(day, records) {
   const visitors = new Set();
   const seenEvents = new Set();
-  /** @type {Map<string, {engagedMs:number, pageviews:number, isNew:boolean|null}>} */
+  /** @type {Map<string, {engagedMs:number, pageviews:number, isNew:boolean|null, attr:object|null, outbound:number, streaming:number}>} */
   const sessions = new Map();
+  const outboundByService = {};
+  const outboundDestinations = {};
   const devices = emptyDevices();
   const countries = {};
 
@@ -53,14 +60,29 @@ export function aggregateDay(day, records) {
 
       let s = sessions.get(e.sid);
       if (!s) {
-        s = { engagedMs: 0, pageviews: 0, isNew: null };
+        s = { engagedMs: 0, pageviews: 0, isNew: null, attr: null, outbound: 0, streaming: 0 };
         sessions.set(e.sid, s);
       }
+      // Attribution belongs to the session, fixed by the batch that opened it,
+      // so a later outbound click is still credited to the post that brought
+      // the visitor in.
+      if (s.attr === null && rec.attr) s.attr = rec.attr;
       // The first record seen for a session decides new-vs-returning; later
       // batches in the same session carry the same flag.
       if (s.isNew === null) s.isNew = rec.new === true;
 
       if (e.t === 'pv') { pageviews++; s.pageviews++; }
+
+      if (e.t === 'out' && e.out) {
+        s.outbound++;
+        const svc = e.out.service ?? 'other';
+        outboundByService[svc] = (outboundByService[svc] ?? 0) + 1;
+        if (e.out.kind === 'streaming') {
+          s.streaming++;
+          const dest = `${svc}|${e.out.path ?? ''}`;
+          outboundDestinations[dest] = (outboundDestinations[dest] ?? 0) + 1;
+        }
+      }
 
       const ms = Number(e.eng_ms);
       if (Number.isFinite(ms) && ms > s.engagedMs) s.engagedMs = ms;
@@ -71,11 +93,35 @@ export function aggregateDay(day, records) {
   let engagedMsTotal = 0;
   let newSessions = 0;
   let returningSessions = 0;
+  let outboundClicks = 0;
+  let streamingClicks = 0;
+  let sessionsWithStreaming = 0;
+  const sources = {};
+  const campaigns = {};
+  const basis = {};
+
+  const bucket = (into, key) => (into[key] ??= { sessions: 0, engagedMs: 0, pageviews: 0, outbound: 0, streaming: 0, intentSessions: 0 });
 
   for (const s of sessions.values()) {
     engagedMsTotal += s.engagedMs;
-    if (s.engagedMs >= ENGAGED_MS || s.pageviews >= 2) engagedSessions++;
+    if (s.engagedMs >= ENGAGED_MS || s.pageviews >= 2 || s.outbound >= 1) engagedSessions++;
     if (s.isNew) newSessions++; else returningSessions++;
+    outboundClicks += s.outbound;
+    streamingClicks += s.streaming;
+    if (s.streaming > 0) sessionsWithStreaming++;
+
+    const a = s.attr ?? null;
+    if (a?.basis) basis[a.basis] = (basis[a.basis] ?? 0) + 1;
+
+    for (const [into, key] of [[sources, sourceKey(a)], [campaigns, campaignKey(a)]]) {
+      const b = bucket(into, key);
+      b.sessions++;
+      b.engagedMs += s.engagedMs;
+      b.pageviews += s.pageviews;
+      b.outbound += s.outbound;
+      b.streaming += s.streaming;
+      if (s.streaming > 0) b.intentSessions++;
+    }
   }
 
   return {
@@ -93,7 +139,29 @@ export function aggregateDay(day, records) {
     suspectBatches,
     rawBatches,
     uniqueEvents: seenEvents.size,
+    outboundClicks,
+    streamingClicks,
+    sessionsWithStreaming,
+    sources,
+    campaigns,
+    basis,
+    outboundByService,
+    outboundDestinations,
   };
+}
+
+/** Merge two `{key: {sessions, engagedMs, ...}}` tables. */
+function mergeBuckets(into, from) {
+  for (const [k, v] of Object.entries(from ?? {})) {
+    const b = (into[k] ??= { sessions: 0, engagedMs: 0, pageviews: 0, outbound: 0, streaming: 0, intentSessions: 0 });
+    for (const f of ['sessions', 'engagedMs', 'pageviews', 'outbound', 'streaming', 'intentSessions']) {
+      b[f] += v?.[f] ?? 0;
+    }
+  }
+}
+
+function mergeCounts(into, from) {
+  for (const [k, n] of Object.entries(from ?? {})) into[k] = (into[k] ?? 0) + n;
 }
 
 /**
@@ -119,6 +187,14 @@ export function combineDays(rollups) {
   let suspectBatches = 0;
   let rawBatches = 0;
   let uniqueEvents = 0;
+  let outboundClicks = 0;
+  let streamingClicks = 0;
+  let sessionsWithStreaming = 0;
+  const sources = {};
+  const campaigns = {};
+  const basis = {};
+  const outboundByService = {};
+  const outboundDestinations = {};
 
   for (const r of rollups) {
     if (!r) continue;
@@ -132,6 +208,14 @@ export function combineDays(rollups) {
     suspectBatches += r.suspectBatches ?? 0;
     rawBatches += r.rawBatches ?? 0;
     uniqueEvents += r.uniqueEvents ?? 0;
+    outboundClicks += r.outboundClicks ?? 0;
+    streamingClicks += r.streamingClicks ?? 0;
+    sessionsWithStreaming += r.sessionsWithStreaming ?? 0;
+    mergeBuckets(sources, r.sources);
+    mergeBuckets(campaigns, r.campaigns);
+    mergeCounts(basis, r.basis);
+    mergeCounts(outboundByService, r.outboundByService);
+    mergeCounts(outboundDestinations, r.outboundDestinations);
     for (const k of Object.keys(devices)) devices[k] += r.devices?.[k] ?? 0;
     for (const [cc, n] of Object.entries(r.countries ?? {})) countries[cc] = (countries[cc] ?? 0) + n;
   }
@@ -149,9 +233,20 @@ export function combineDays(rollups) {
     suspectBatches,
     rawBatches,
     uniqueEvents,
+    outboundClicks,
+    streamingClicks,
+    sessionsWithStreaming,
+    sources,
+    campaigns,
+    basis,
+    outboundByService,
+    outboundDestinations,
     avgEngagedMs: sessions ? Math.round(engagedMsTotal / sessions) : 0,
     engagementRate: sessions ? engagedSessions / sessions : 0,
     pagesPerSession: sessions ? pageviews / sessions : 0,
+    // The number the whole phase exists for: what share of visits turned into
+    // someone actually going to listen.
+    intentRate: sessions ? sessionsWithStreaming / sessions : 0,
   };
 }
 
