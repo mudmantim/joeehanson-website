@@ -32,8 +32,8 @@ The site should feel like an album cover became a webpage and forgot to be a web
 ├── manifest.json       — PWA manifest
 ├── sw.js               — service worker (cache-first)
 ├── data/
-│   ├── releases.json   — music releases (featured song first)
-│   ├── fragments.json  — short timeless observations
+│   ├── releases.json   — music releases (featured release first)
+│   ├── fragments.json  — short timeless observations (Things Left Unsaid)
 │   └── socials.json    — platform links
 └── assets/
     └── images/         — album art and photography
@@ -42,10 +42,10 @@ The site should feel like an album cover became a webpage and forgot to be a web
 **Sections, in order:**
 
 1. **Hero** — name, tagline, Listen / Watch
-2. **Featured Song** — current focus, Spotify + YouTube primary
+2. **New Album** — current release, tracklist + Spotify/YouTube primary
 3. **Music** — back catalog, all linking to Spotify artist page
 4. **About** — two sentences. That's enough.
-5. **Fragments** — short timeless observations. Not quotes. Not lyrics. Just things.
+5. **Things Left Unsaid** — short timeless observations. Not quotes. Not lyrics. Just things.
 6. **Take it with you** — PWA install, porch light behind the words
 7. **Footer** — Spotify, YouTube, Instagram, TikTok, Facebook
 
@@ -74,9 +74,11 @@ Or any static file server. No build required.
 
 ## Updating content
 
-**To change the featured song** — edit `data/releases.json`, first entry.
+**To change the featured release** — edit `data/releases.json`, first entry. It may be a
+single song (add `audio` for the inline player) or an album (add `tracks`). Tracks
+without a `url` render as plain text, for a release whose links are not live yet.
 
-**To add a release** — append to `data/releases.json`. The first item is always the featured song; the rest populate the Music section.
+**To add a release** — append to `data/releases.json`. The first item is always the featured release; the rest populate the Music section.
 
 **To update fragments** — edit `data/fragments.json`. Keep them short. Keep them timeless. No names. No specific places. Just the thing that's true.
 
@@ -89,10 +91,12 @@ Or any static file server. No build required.
 | File | Used as |
 |---|---|
 | `110.png` | Hero background (wide performance scene) |
-| `109.webp` | Featured song / About portrait (performer silhouette) |
-| `104.png` | *Fourteen Years* album cover |
-| `123.png` | *When I'm Gone* album cover |
-| `126.jpg` | *The Man Under the Ash* album cover |
+| `109.webp` | About portrait (performer silhouette) |
+| `half-married-half-alone.webp` | *Half Married, Half Alone* album cover |
+| `og-half-married-half-alone.jpg` | Open Graph / Twitter card image (1200×630) |
+| `104.webp` | *Fourteen Years* album cover |
+| `123.webp` | *When I'm Gone* album cover |
+| `126.webp` | *The Man Under the Ash* album cover |
 | `111.webp` | PWA section background (porch lantern) |
 
 ---

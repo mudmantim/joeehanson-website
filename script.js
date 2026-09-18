@@ -63,7 +63,23 @@ function renderLatest(release) {
         .join('')
     : '';
 
-  const meta = [release.year, release.type].filter(Boolean).join(' · ');
+  const meta = [release.type, release.label, release.year].filter(Boolean).join(' · ');
+
+  // Reuses the catalog track styles. A track without a url renders as plain
+  // text — the release links may not exist yet.
+  const tracklist = (release.tracks || [])
+    .map((t, ti) => {
+      const name = t.url
+        ? `<a class="catalog__track-link" href="${escape(t.url)}" target="_blank" rel="noopener noreferrer">${escape(t.title)}</a>`
+        : `<span class="catalog__track-link catalog__track-link--plain">${escape(t.title)}</span>`;
+
+      return `
+          <li class="catalog__track">
+            <span class="catalog__track-num" aria-hidden="true">${String(ti + 1).padStart(2, '0')}</span>
+            ${name}
+          </li>`;
+    })
+    .join('');
 
   const player = release.audio
     ? `
@@ -96,6 +112,7 @@ function renderLatest(release) {
       ${meta ? `<p class="latest__meta">${escape(meta)}</p>` : ''}
       ${release.description ? `<p class="latest__desc">${escape(release.description)}</p>` : ''}
       ${player}
+      ${tracklist ? `<ol class="catalog__tracks">${tracklist}</ol>` : ''}
       ${primaryCtas ? `<div class="latest__primary-ctas">${primaryCtas}</div>` : ''}
       ${secondaryLinks ? `<div class="latest__links">${secondaryLinks}</div>` : ''}
     </div>

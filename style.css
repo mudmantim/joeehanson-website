@@ -599,6 +599,13 @@ a {
   color: var(--cream);
 }
 
+/* Track with no link yet — same type, none of the link affordance. */
+.catalog__track-link--plain,
+.catalog__track-link--plain:hover {
+  color: var(--cream-mid);
+  cursor: default;
+}
+
 .catalog__cta {
   font-size: 0.68rem;
   letter-spacing: 0.35em;
