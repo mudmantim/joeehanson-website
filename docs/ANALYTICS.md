@@ -166,6 +166,34 @@ Ranges: `/api/stats?range=today|7d|30d|all` or `?from=YYYY-MM-DD&to=YYYY-MM-DD`.
 A reversed custom range is swapped rather than rejected; a future end date is
 clamped to today. All day boundaries are America/New_York.
 
+## 2026-09-18 is verification traffic, not audience
+
+The day the system was built is contaminated, and there is no safe way to
+remove it. Read any range that includes **2026-09-18** with that in mind; real
+measurement starts 2026-09-19.
+
+What is in that day's production figures (18 sessions, 20 pageviews):
+
+| | |
+|---|---|
+| 5 tagged sessions | Definitively synthetic. Campaigns `zzz-verification-20260918/*` and `iso6-*`, created to verify attribution, outbound clicks and store isolation. Identifiable forever by name. |
+| 13 untagged sessions | Overwhelmingly synthetic -- plain pageview writes from the Phase 1/2/3 verification scripts. **Not separable from real traffic.** |
+| 20 owner-excluded hits | Correctly excluded. Never in any metric. |
+
+One honest uncertainty: 4 of the day's 37 batches came from mobile
+user-agents, and none of the verification traffic was mobile. Those are
+plausibly real release-day visitors. It is not possible to confirm.
+
+**Why it was not cleaned up.** There is no delete-by-key admin endpoint, and
+adding one that removes events matching a campaign prefix would put a mechanism
+capable of deleting genuine visitor data next to a store that has no backup and
+no point-in-time recovery. The cost of leaving one clearly-labelled bad day is
+much lower than the cost of that mechanism existing.
+
+Raw events for the day expire after 90 days. The daily rollup does not -- so
+the contaminated figures for 2026-09-18 are permanent in the aggregate, which
+is precisely why this section exists.
+
 ## Reading the dashboard honestly
 
 **Visitors overcounts on any range longer than a day.** It is the sum of daily
