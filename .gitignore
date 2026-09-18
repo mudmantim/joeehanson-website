@@ -18,6 +18,13 @@ assets/videos/
 # Stray image export, duplicated from a working folder.
 ChatGPT Image *.png
 
+# Node dependencies for the Netlify functions. Never published: they live
+# outside public/, which is the only directory Netlify serves.
+node_modules/
+
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Local secrets for `netlify dev`. Never committed.
+.env

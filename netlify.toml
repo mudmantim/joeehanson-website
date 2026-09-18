@@ -1,5 +1,15 @@
 [build]
-  publish = "."
+  publish  = "public"
+  # Everything the public site needs lives in public/. Source, functions,
+  # package files, docs and tests sit outside it and are therefore not
+  # publishable at all -- not blocked by a rule that can be forgotten.
+
+[functions]
+  directory = "netlify/functions"
+
+# Edge function routing is declared in-code via each function's exported
+# `config`, which is what Netlify recommends and is the only form that accepts
+# multiple paths and onError. Nothing here needs explicit ordering control.
 
 # ── www → apex ──────────────────────────────────────────────────────────────
 [[redirects]]

@@ -1,0 +1,15 @@
+{
+  "name": "joeehanson-website",
+  "private": true,
+  "type": "module",
+  "description": "joeehanson.com — static site in public/, private analytics in netlify/.",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "devDependencies": {
+    "@netlify/edge-functions": "^2.11.0"
+  }
+}

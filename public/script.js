@@ -323,3 +323,210 @@ if ('serviceWorker' in navigator) {
    ============================================================ */
 
 loadData();
+
+/* ============================================================
+   MEASUREMENT
+
+   First-party, cookieless for ordinary visitors. Sends a small
+   batch to /api/e: a pageview, periodic engagement heartbeats,
+   and a final flush when the page goes away.
+
+   Stores nothing about the visitor beyond one localStorage value
+   holding the month they first arrived, which is what answers
+   new-versus-returning without creating an identifier.
+   ============================================================ */
+
+/* @engagement-core:start
+   Pure, dependency-free, and driven entirely by timestamps passed in, so the
+   test suite can replay an exact timeline without a browser or a clock.
+
+   The clock runs only while the page is visible AND focused AND there has been
+   interaction within idleMs. Backgrounded time is not engagement, and neither
+   is a visible tab nobody is looking at. */
+function createEngagementTracker(options) {
+  var idleMs = (options && options.idleMs) || 60000;
+  var engagedMs = 0;
+  var runningSince = null;
+  var lastActivity = options.now;
+  var visible = options.visible !== false;
+  var focused = options.focused !== false;
+
+  function stopAt(t) {
+    if (runningSince !== null) {
+      var d = t - runningSince;
+      if (d > 0) engagedMs += d;
+      runningSince = null;
+    }
+  }
+
+  // Commit any engagement that is already settled as of `now`. If the idle
+  // deadline passed while the clock was running, engagement stops at the
+  // deadline rather than at `now`.
+  function settle(now) {
+    if (runningSince === null) return;
+    var idleAt = lastActivity + idleMs;
+    if (now >= idleAt) stopAt(idleAt);
+  }
+
+  function maybeStart(now) {
+    if (runningSince === null && visible && focused && now - lastActivity < idleMs) {
+      runningSince = now;
+    }
+  }
+
+  // Start counting immediately when the page opens visible and focused.
+  // Without this the clock only ever started on the first interaction, so a
+  // visitor who read without touching anything registered zero engagement.
+  maybeStart(options.now);
+
+  return {
+    activity: function (now) {
+      settle(now);
+      lastActivity = now;
+      maybeStart(now);
+    },
+    setVisible: function (v, now) {
+      settle(now);
+      if (!v) stopAt(now);
+      visible = v;
+      if (v) lastActivity = now;
+      maybeStart(now);
+    },
+    setFocused: function (f, now) {
+      settle(now);
+      if (!f) stopAt(now);
+      focused = f;
+      if (f) lastActivity = now;
+      maybeStart(now);
+    },
+    read: function (now) {
+      settle(now);
+      return engagedMs + (runningSince !== null ? Math.max(0, now - runningSince) : 0);
+    }
+  };
+}
+/* @engagement-core:end */
+
+(function measurement() {
+  var ENDPOINT = '/api/e';
+  var HEARTBEAT_MS = 15000;      // of engaged time, not wall time
+  var SESSION_GAP_MS = 30 * 60 * 1000;
+  var IDLE_MS = 60000;
+
+  var uuid = function () {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'x' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  };
+
+  var safe = function (fn, fallback) {
+    try { return fn(); } catch (e) { return fallback; }
+  };
+
+  // ---- Session: 30 minutes of inactivity starts a new one ----------------
+  var now = Date.now();
+  var sid = safe(function () { return sessionStorage.getItem('jh_sid'); }, null);
+  var last = Number(safe(function () { return sessionStorage.getItem('jh_last'); }, 0)) || 0;
+  if (!sid || now - last > SESSION_GAP_MS) sid = uuid();
+  var touch = function () {
+    safe(function () {
+      sessionStorage.setItem('jh_sid', sid);
+      sessionStorage.setItem('jh_last', String(Date.now()));
+    });
+  };
+  touch();
+
+  // ---- New vs returning, without an identifier ---------------------------
+  var month = new Date().toISOString().slice(0, 7);
+  var firstSeen = safe(function () { return localStorage.getItem('jh_fs'); }, null);
+  var isNew = !firstSeen;
+  if (!firstSeen) safe(function () { localStorage.setItem('jh_fs', month); });
+
+  var tracker = createEngagementTracker({
+    now: now,
+    visible: document.visibilityState === 'visible',
+    focused: document.hasFocus()
+  });
+
+  var queue = [];
+  var sentEngagedMs = 0;
+  var pageviews = 0;
+
+  function enqueue(type, extra) {
+    var e = {
+      eid: uuid(),
+      sid: sid,
+      t: type,
+      ts: Date.now(),
+      path: location.pathname,
+      eng_ms: tracker.read(Date.now()),
+      pv: pageviews
+    };
+    if (extra) for (var k in extra) e[k] = extra[k];
+    queue.push(e);
+  }
+
+  function send(useBeacon) {
+    if (!queue.length) return;
+    var payload = JSON.stringify({
+      events: queue.splice(0, queue.length),
+      ref: document.referrer || '',
+      new: isNew,
+      wd: navigator.webdriver === true
+    });
+    touch();
+
+    // sendBeacon is fire-and-forget: it does not block navigation and it
+    // survives the page being torn down, which is the whole reason the final
+    // flush happens on pagehide rather than beforeunload.
+    if (useBeacon && navigator.sendBeacon) {
+      var ok = navigator.sendBeacon(ENDPOINT, new Blob([payload], { type: 'text/plain' }));
+      if (ok) return;
+    }
+    safe(function () {
+      fetch(ENDPOINT, { method: 'POST', body: payload, keepalive: true, headers: { 'content-type': 'application/json' } });
+    });
+  }
+
+  // ---- Pageview ----------------------------------------------------------
+  pageviews = 1;
+  enqueue('pv');
+  send(false);
+
+  // ---- Activity signals --------------------------------------------------
+  var lastMove = 0;
+  function activity() {
+    var t = Date.now();
+    if (t - lastMove < 1000) return;   // throttle pointermove
+    lastMove = t;
+    tracker.activity(t);
+  }
+  ['scroll', 'pointerdown', 'keydown', 'touchstart', 'pointermove'].forEach(function (ev) {
+    addEventListener(ev, activity, { passive: true });
+  });
+
+  addEventListener('visibilitychange', function () {
+    var visible = document.visibilityState === 'visible';
+    tracker.setVisible(visible, Date.now());
+    if (!visible) { enqueue('eng'); send(true); }
+  });
+  addEventListener('blur', function () { tracker.setFocused(false, Date.now()); });
+  addEventListener('focus', function () { tracker.setFocused(true, Date.now()); });
+
+  // ---- Heartbeat: every 15s of *engaged* time ----------------------------
+  // Without this an abandoned session would record nothing, because the final
+  // flush never arrives when a laptop lid closes.
+  setInterval(function () {
+    var engaged = tracker.read(Date.now());
+    if (engaged - sentEngagedMs >= HEARTBEAT_MS) {
+      sentEngagedMs = engaged;
+      enqueue('eng');
+      send(true);
+    }
+  }, 5000);
+
+  // ---- Final flush -------------------------------------------------------
+  addEventListener('pagehide', function () {
+    enqueue('end');
+    send(true);
+  });
+})();
