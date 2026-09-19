@@ -66,12 +66,13 @@ const SERVICES = [
   ['soundcloud.com', 'soundcloud'],
   ['bandcamp.com', 'bandcamp'],
   ['pandora.com', 'pandora'],
+  ['iheart.com', 'iheartradio'], ['iheartradio.com', 'iheartradio'],
 ];
 
 /** Which outbound services count as listening intent rather than a social follow. */
 export const STREAMING_SERVICES = new Set([
   'spotify', 'apple_music', 'youtube', 'deezer', 'amazon_music', 'tidal',
-  'soundcloud', 'bandcamp', 'pandora',
+  'soundcloud', 'bandcamp', 'pandora', 'iheartradio',
 ]);
 
 const SOCIAL_HOSTS = [

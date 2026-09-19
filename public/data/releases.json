@@ -6,29 +6,49 @@
     "type": "LP",
     "label": "Porch Light Records",
     "year": "September 18, 2026",
+    "spotify": "https://open.spotify.com/album/0U05MZdC2Ji4aaFgp2Hptx",
+    "links": {
+      "Spotify": "https://open.spotify.com/album/0U05MZdC2Ji4aaFgp2Hptx",
+      "Apple Music": "https://music.apple.com/us/album/half-married-half-alone/6813626040",
+      "YouTube Music": "https://music.youtube.com/browse/MPREb_Ata1pgZi2Rr",
+      "Amazon Music": "https://music.amazon.com/albums/B0HK8XS74F",
+      "Deezer": "https://www.deezer.com/album/1081841592",
+      "iHeartRadio": "https://www.iheart.com/artist/joe-e-hanson-50504383/albums/half-married-half-alone-433506780/"
+    },
     "tracks": [
-      { "title": "I'm Still Here" },
-      { "title": "Say It Back" },
-      { "title": "Forgive Yourself" },
-      { "title": "I Don't Know How to Do This" },
-      { "title": "The Ghost of the Board" },
-      { "title": "Half Married, Half Alone" },
-      { "title": "If I Disappeared Tonight" },
-      { "title": "The Weight of Staying" },
-      { "title": "Same Damn Shame" }
+      { "title": "I'm Still Here",             "url": "https://open.spotify.com/track/1UdPn4jXkZ50Pq4eWNS9MQ" },
+      { "title": "Say It Back",                "url": "https://open.spotify.com/track/5uJ8U8jKmAsdop1BNZeaDq" },
+      { "title": "Forgive Yourself",           "url": "https://open.spotify.com/track/47C2G8BqtcOFo8dmlsJQ5F" },
+      { "title": "I Don't Know How to do This", "url": "https://open.spotify.com/track/4PNr32KkyvQI1Q2apri3S0" },
+      { "title": "The Ghost of the Board",     "url": "https://open.spotify.com/track/10PK4c9QDIDjkIECPN1JvQ" },
+      { "title": "Half Married, Half Alone",   "url": "https://open.spotify.com/track/1U6kNCIJL3PtLaya0BdcU1" },
+      { "title": "If I Disappeared Tonight",   "url": "https://open.spotify.com/track/1mMrsDYQ2Qbewg9OD7htIC" },
+      { "title": "The Weight of Staying",      "url": "https://open.spotify.com/track/4S0PZrrd1qcABmCiWRgyap" },
+      { "title": "Same Damn Shame",            "url": "https://open.spotify.com/track/2Rs2VO2g9Wd8zmwfvlS9xF" }
     ]
   },
   {
     "id": "fourteen-years",
     "title": "Fourteen Years",
     "image": "assets/images/104.webp",
+    "type": "LP",
+    "label": "Porch Light Records",
+    "year": "May 1, 2026",
     "spotify": "https://open.spotify.com/album/3pWh9MIe5RzYWmmng65qjE",
+    "links": {
+      "Spotify": "https://open.spotify.com/album/3pWh9MIe5RzYWmmng65qjE",
+      "Apple Music": "https://music.apple.com/us/album/fourteen-years/6766295002",
+      "YouTube Music": "https://music.youtube.com/browse/MPREb_nXU6ysfaCUz",
+      "Amazon Music": "https://music.amazon.com/albums/B0GY6LXJFT",
+      "Deezer": "https://www.deezer.com/album/967653781",
+      "iHeartRadio": "https://www.iheart.com/artist/joe-e-hanson-50504383/albums/fourteen-years-396612356/"
+    },
     "tracks": [
       { "title": "The Light in the Window",  "url": "https://open.spotify.com/track/4tQmc1YFcblc5sj7HuHs5T" },
       { "title": "Just Me and This Guitar",  "url": "https://open.spotify.com/track/4K8DifKb8fNKFiFHcvwvvk" },
       { "title": "Leveling Out",             "url": "https://open.spotify.com/track/4kE597hZHLC585HxZLK2vy" },
       { "title": "The Line",                 "url": "https://open.spotify.com/track/3JsIlZ3IW6B7u3XJu6AibH" },
-      { "title": "Belonging",                "url": "https://open.spotify.com/track/3vHtfESxMW6oeg1y44pRKs" },
+      { "title": "Belonging (feat. Jodie Hanson)", "url": "https://open.spotify.com/track/3vHtfESxMW6oeg1y44pRKs" },
       { "title": "Chemical Calm",            "url": "https://open.spotify.com/track/7ffXSpd28B8D2Orr7OC7ef" },
       { "title": "Nothing Left",             "url": "https://open.spotify.com/track/3fbICv80G3gf2PgkkL34nH" },
       { "title": "The Place I Belong",       "url": "https://open.spotify.com/track/3tNcTGDRIhzc2W853wF5dO" },
@@ -44,7 +64,18 @@
     "id": "when-im-gone",
     "title": "When I'm Gone",
     "image": "assets/images/123.webp",
+    "type": "Single",
+    "label": "Porch Light Records",
+    "year": "May 25, 2026",
     "spotify": "https://open.spotify.com/album/4INT7qeVeyqGJIkKqwWp4G",
+    "links": {
+      "Spotify": "https://open.spotify.com/album/4INT7qeVeyqGJIkKqwWp4G",
+      "Apple Music": "https://music.apple.com/us/album/when-im-gone-single/6773189634",
+      "YouTube Music": "https://music.youtube.com/browse/MPREb_NIdxUXK40EA",
+      "Amazon Music": "https://music.amazon.com/albums/B0H2XR8X3F",
+      "Deezer": "https://www.deezer.com/album/991191801",
+      "iHeartRadio": "https://www.iheart.com/artist/joe-e-hanson-50504383/albums/when-im-gone-404679941/"
+    },
     "tracks": [
       { "title": "When I'm Gone", "url": "https://open.spotify.com/track/5tVhie67FxZCtQoX2JLEeK" }
     ]
@@ -53,7 +84,18 @@
     "id": "the-man-under-the-ash",
     "title": "The Man Under the Ash",
     "image": "assets/images/126.webp",
+    "type": "Single",
+    "label": "Porch Light Records",
+    "year": "May 27, 2026",
     "spotify": "https://open.spotify.com/album/0sbhp3XUYisaWqlsbefSCg",
+    "links": {
+      "Spotify": "https://open.spotify.com/album/0sbhp3XUYisaWqlsbefSCg",
+      "Apple Music": "https://music.apple.com/us/album/the-man-under-the-ash-ep/6776460191",
+      "YouTube Music": "https://music.youtube.com/browse/MPREb_6xr1JwvDTbU",
+      "Amazon Music": "https://music.amazon.com/albums/B0H35S8YC1",
+      "Deezer": "https://www.deezer.com/album/992926911",
+      "iHeartRadio": "https://www.iheart.com/artist/joe-e-hanson-50504383/albums/the-man-under-the-ash-405226406/"
+    },
     "tracks": [
       { "title": "The Man Under the Ash", "url": "https://open.spotify.com/track/5yN3WSfdDFsF91lxxlWGwW" }
     ]
