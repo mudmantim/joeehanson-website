@@ -479,6 +479,10 @@ a {
   color: var(--cream);
 }
 
+.catalog__detail .latest__links {
+  margin-top: 0.2rem;
+}
+
 .latest__links {
   display: flex;
   flex-wrap: wrap;
@@ -562,6 +566,17 @@ a {
 
 .catalog__album-title a:hover {
   color: var(--amber-warm);
+}
+
+/* Release type and date under a catalog title. Same voice as the featured
+   meta line, one step quieter. */
+.catalog__meta {
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  margin-top: -0.3rem;
+  margin-bottom: 1rem;
 }
 
 .catalog__tracks {

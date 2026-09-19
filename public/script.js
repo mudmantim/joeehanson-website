@@ -55,13 +55,7 @@ function renderLatest(release) {
       : '',
   ].filter(Boolean).join('');
 
-  const secondaryLinks = release.links
-    ? Object.entries(release.links)
-        .map(([platform, url]) =>
-          `<a class="latest__link" href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(platform)}</a>`
-        )
-        .join('')
-    : '';
+  const secondaryLinks = serviceLinks(release);
 
   const meta = [release.type, release.label, release.year].filter(Boolean).join(' · ');
 
@@ -114,7 +108,7 @@ function renderLatest(release) {
       ${player}
       ${tracklist ? `<ol class="catalog__tracks">${tracklist}</ol>` : ''}
       ${primaryCtas ? `<div class="latest__primary-ctas">${primaryCtas}</div>` : ''}
-      ${secondaryLinks ? `<div class="latest__links">${secondaryLinks}</div>` : ''}
+      ${secondaryLinks}
     </div>
   `;
 
@@ -186,6 +180,25 @@ function initPlayer(root) {
   });
 }
 
+/**
+ * Where a release can be heard.
+ *
+ * One quiet row of text links, in the order given in the data. A release only
+ * lists a service it is actually on -- a missing one is left out rather than
+ * pointed at a search page, so every link here opens the release itself.
+ */
+function serviceLinks(release) {
+  const entries = Object.entries(release.links || {});
+  if (entries.length === 0) return '';
+
+  const links = entries
+    .map(([name, url]) =>
+      `<a class="latest__link" href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(name)}</a>`)
+    .join('');
+
+  return `<div class="latest__links">${links}</div>`;
+}
+
 function renderMusic(releases) {
   const grid = document.getElementById('music-grid');
   if (!grid) return;
@@ -200,17 +213,27 @@ function renderMusic(releases) {
           </li>`)
         .join('');
 
+      // Wherever it is available. Rendered as quiet text links rather than a
+      // row of brand buttons: the visitor gets the choice without the page
+      // turning into a streaming-service directory.
+      const services = serviceLinks(r);
+
+      // The art and title point at whichever service is listed first, so the
+      // obvious click still goes somewhere sensible.
+      const primary = r.spotify || Object.values(r.links || {})[0] || '';
+
       return `
         <article class="catalog__album reveal" style="--d:${(i * 0.14).toFixed(2)}s">
-          <a class="catalog__art-wrap" href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
+          <a class="catalog__art-wrap" href="${escape(primary)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
             <img class="catalog__art" src="${escape(r.image)}" alt="${escape(r.title)}" loading="lazy">
           </a>
           <div class="catalog__detail">
             <h3 class="catalog__album-title">
-              <a href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer">${escape(r.title)}</a>
+              <a href="${escape(primary)}" target="_blank" rel="noopener noreferrer">${escape(r.title)}</a>
             </h3>
+            ${r.year ? `<p class="catalog__meta">${escape([r.type, r.year].filter(Boolean).join(' \u00b7 '))}</p>` : ''}
             ${tracklist ? `<ol class="catalog__tracks">${tracklist}</ol>` : ''}
-            <a class="catalog__cta" href="${escape(r.spotify)}" target="_blank" rel="noopener noreferrer">Listen on Spotify &nbsp;&rarr;</a>
+            ${services}
           </div>
         </article>`;
     })
