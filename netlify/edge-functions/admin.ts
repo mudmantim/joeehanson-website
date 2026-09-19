@@ -21,7 +21,7 @@ import {
   verifyToken,
 } from '../lib/crypto.ts';
 import { analyticsStore, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
-import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange } from '../lib/rollup.js';
+import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange, ROLLUP_VERSION } from '../lib/rollup.js';
 import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
 
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
@@ -159,6 +159,117 @@ export default async (req: Request, context: Context): Promise<Response> => {
     });
   }
 
+  // ---- Maintenance --------------------------------------------------------
+  // The nightly jobs are scheduled functions and cannot be invoked by hand in
+  // production, which is exactly why a bug in them went unnoticed for a day.
+  // This runs the same logic over the same shared code, from a request whose
+  // hostname decides the environment, so it can be checked immediately.
+  //
+  // Destructive work is dry-run unless `confirm=yes` is passed.
+  if (path === '/api/maintenance' && req.method === 'POST') {
+    const store = analyticsStore(production, { consistency: 'strong' });
+    const today = reportDay();
+    const job = url.searchParams.get('job');
+    const confirmed = url.searchParams.get('confirm') === 'yes';
+
+    // The caller must name the environment it believes it is acting on, and it
+    // has to match what the hostname says. A maintenance call that runs against
+    // a different store than the operator intended is the whole failure being
+    // repaired here, so it is made impossible to do by accident.
+    const expect = url.searchParams.get('expect');
+    const actual = production ? 'production' : 'preview';
+    if (expect !== actual) {
+      return json({
+        error: 'environment assertion failed',
+        detail: `this host resolves to "${actual}"; pass expect=${actual} to proceed`,
+        host: url.hostname, store: storeNameFor(production),
+      }, 409);
+    }
+
+    const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const dayOf = (key: string) => key.split('/')[1] ?? '';
+    const ageInDays = (day: string) =>
+      Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
+
+    if (job === 'rollup') {
+      const only = url.searchParams.get('day');
+      if (only && !DAY_RE.test(only)) return json({ error: 'day must be YYYY-MM-DD' }, 400);
+
+      const days = new Set<string>();
+      for (const b of (await store.list({ prefix: 'raw/' })).blobs) {
+        const d = dayOf(b.key);
+        if (DAY_RE.test(d)) days.add(d);
+      }
+
+      const written: string[] = [];
+      const skipped: string[] = [];
+      for (const day of [...days].sort()) {
+        if (only && day !== only) continue;
+        // Never roll up a day that is still accumulating.
+        if (day >= today) { skipped.push(`${day} (still open)`); continue; }
+        const existing = (await store.get(keys.rollup(day), { type: 'json' })) as any;
+        if (existing?.v === ROLLUP_VERSION && !confirmed) { skipped.push(`${day} (already at v${ROLLUP_VERSION})`); continue; }
+
+        const records = [];
+        for (const b of (await store.list({ prefix: `raw/${day}/` })).blobs) {
+          const rec = await store.get(b.key, { type: 'json' });
+          if (rec) records.push(rec);
+        }
+        await store.setJSON(keys.rollup(day), { ...aggregateDay(day, records), generatedAt: new Date().toISOString() });
+        written.push(day);
+      }
+      return json({ job, environment: actual, store: storeNameFor(production), today,
+                    rollupVersion: ROLLUP_VERSION, written, skipped });
+    }
+
+    if (job === 'prune') {
+      const RETENTION: Record<string, number> = { raw: 90, owner: 7, salt: 2 };
+      // A cap on how much one call may remove. A date-handling mistake should
+      // hit this and stop, not empty the store.
+      const MAX_DELETE = 500;
+
+      const plan: Record<string, string[]> = { raw: [], owner: [], salt: [] };
+      const retained: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
+
+      for (const prefix of ['raw', 'owner', 'salt'] as const) {
+        for (const b of (await store.list({ prefix: `${prefix}/` })).blobs) {
+          const day = dayOf(b.key);
+          // An unparseable key is left alone rather than guessed at.
+          if (!DAY_RE.test(day)) { retained[prefix]++; continue; }
+          const age = ageInDays(day);
+          // Future-dated or same-day keys are never eligible, whatever the
+          // arithmetic says. Today's salt in particular must survive.
+          if (!Number.isFinite(age) || age < 1) { retained[prefix]++; continue; }
+          if (age >= RETENTION[prefix]) plan[prefix].push(b.key); else retained[prefix]++;
+        }
+      }
+
+      const total = Object.values(plan).reduce((a, v) => a + v.length, 0);
+      const summary = {
+        job, environment: actual, store: storeNameFor(production), today,
+        retentionDays: RETENTION,
+        wouldDelete: Object.fromEntries(Object.entries(plan).map(([k, v]) => [k, v.length])),
+        retained,
+        oldestEligible: Object.fromEntries(
+          Object.entries(plan).map(([k, v]) => [k, v.map(dayOf).sort()[0] ?? null])),
+      };
+
+      if (total > MAX_DELETE) {
+        return json({ ...summary, refused: true,
+                      reason: `plan of ${total} exceeds the ${MAX_DELETE} safety cap` }, 409);
+      }
+      if (!confirmed) return json({ ...summary, dryRun: true });
+
+      const deleted: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
+      for (const [prefix, list] of Object.entries(plan)) {
+        for (const key of list) { await store.delete(key); deleted[prefix]++; }
+      }
+      return json({ ...summary, dryRun: false, deleted });
+    }
+
+    return json({ error: 'unknown job', jobs: ['rollup', 'prune'] }, 400);
+  }
+
   // ---- Stats --------------------------------------------------------------
   if (path === '/api/stats') {
     // Strong consistency: a default (eventual) read can lag by up to a minute,
@@ -256,6 +367,6 @@ export default async (req: Request, context: Context): Promise<Response> => {
 };
 
 export const config: Config = {
-  path: ['/admin', '/admin/*', '/api/login', '/api/logout', '/api/whoami', '/api/own', '/api/stats', '/api/test-event'],
+  path: ['/admin', '/admin/*', '/api/login', '/api/logout', '/api/whoami', '/api/own', '/api/stats', '/api/test-event', '/api/maintenance'],
   onError: 'fail',
 };
