@@ -22,9 +22,9 @@ function daysAgo(day: string, today: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-export default async () => {
-  // Node functions do see CONTEXT, unlike the edge runtime.
-  const store = analyticsStore(isProductionProcess());
+export default async (req: Request, context: any) => {
+  const production = isProductionProcess(context);
+  const store = analyticsStore(production);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ }).format(new Date());
   const deleted: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
   const kept: Record<string, number> = { raw: 0, owner: 0, salt: 0 };

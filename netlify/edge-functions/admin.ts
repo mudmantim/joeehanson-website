@@ -21,7 +21,7 @@ import {
   verifyToken,
 } from '../lib/crypto.ts';
 import { analyticsStore, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
-import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange } from '../lib/rollup.js';
+import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange, ROLLUP_VERSION } from '../lib/rollup.js';
 import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
 
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
@@ -159,6 +159,68 @@ export default async (req: Request, context: Context): Promise<Response> => {
     });
   }
 
+  // ---- Maintenance --------------------------------------------------------
+  // The nightly jobs are scheduled functions and cannot be invoked by hand in
+  // production, which is exactly why a bug in them went unnoticed for a day.
+  // This runs the same logic over the same shared code, from a request whose
+  // hostname decides the environment, so it can be checked immediately.
+  //
+  // Destructive work is dry-run unless `confirm=yes` is passed.
+  if (path === '/api/maintenance' && req.method === 'POST') {
+    const store = analyticsStore(production, { consistency: 'strong' });
+    const today = reportDay();
+    const job = url.searchParams.get('job');
+    const confirmed = url.searchParams.get('confirm') === 'yes';
+
+    const daysWithRaw = new Set<string>();
+    for (const b of (await store.list({ prefix: 'raw/' })).blobs) {
+      const d = b.key.split('/')[1];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) daysWithRaw.add(d);
+    }
+
+    if (job === 'rollup') {
+      const written: string[] = [];
+      const skipped: string[] = [];
+      for (const day of [...daysWithRaw].sort()) {
+        if (day >= today) { skipped.push(`${day} (still open)`); continue; }
+        const existing = (await store.get(keys.rollup(day), { type: 'json' })) as any;
+        if (existing?.v === ROLLUP_VERSION && !confirmed) { skipped.push(`${day} (already rolled up)`); continue; }
+        const records = [];
+        for (const b of (await store.list({ prefix: `raw/${day}/` })).blobs) {
+          const rec = await store.get(b.key, { type: 'json' });
+          if (rec) records.push(rec);
+        }
+        await store.setJSON(keys.rollup(day), { ...aggregateDay(day, records), generatedAt: new Date().toISOString() });
+        written.push(day);
+      }
+      return json({ job, production, store: storeNameFor(production), today, written, skipped });
+    }
+
+    if (job === 'prune') {
+      const RETENTION: Record<string, number> = { raw: 90, owner: 7, salt: 2 };
+      const plan: Record<string, string[]> = { raw: [], owner: [], salt: [] };
+      for (const prefix of ['raw', 'owner', 'salt']) {
+        for (const b of (await store.list({ prefix: `${prefix}/` })).blobs) {
+          const day = b.key.split('/')[1];
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+          const age = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
+          if (age >= RETENTION[prefix]) plan[prefix].push(b.key);
+        }
+      }
+      if (!confirmed) {
+        return json({ job, production, store: storeNameFor(production), today, dryRun: true,
+                      wouldDelete: Object.fromEntries(Object.entries(plan).map(([k, v]) => [k, v.length])) });
+      }
+      const deleted: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
+      for (const [prefix, list] of Object.entries(plan)) {
+        for (const key of list) { await store.delete(key); deleted[prefix]++; }
+      }
+      return json({ job, production, store: storeNameFor(production), today, dryRun: false, deleted });
+    }
+
+    return json({ error: 'unknown job', jobs: ['rollup', 'prune'] }, 400);
+  }
+
   // ---- Stats --------------------------------------------------------------
   if (path === '/api/stats') {
     // Strong consistency: a default (eventual) read can lag by up to a minute,
@@ -256,6 +318,6 @@ export default async (req: Request, context: Context): Promise<Response> => {
 };
 
 export const config: Config = {
-  path: ['/admin', '/admin/*', '/api/login', '/api/logout', '/api/whoami', '/api/own', '/api/stats', '/api/test-event'],
+  path: ['/admin', '/admin/*', '/api/login', '/api/logout', '/api/whoami', '/api/own', '/api/stats', '/api/test-event', '/api/maintenance'],
   onError: 'fail',
 };

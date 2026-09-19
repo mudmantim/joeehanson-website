@@ -17,8 +17,9 @@ import type { Config } from '@netlify/functions';
 import { analyticsStore, isProductionProcess, keys, REPORT_TZ } from '../lib/store.ts';
 import { aggregateDay, ROLLUP_VERSION } from '../lib/rollup.js';
 
-export default async (req: Request) => {
-  const store = analyticsStore(isProductionProcess(), { consistency: 'strong' });
+export default async (req: Request, context: any) => {
+  const production = isProductionProcess(context);
+  const store = analyticsStore(production, { consistency: 'strong' });
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ }).format(new Date());
 
   // `?force=YYYY-MM-DD` recomputes one day even if it already has a rollup.
@@ -55,7 +56,7 @@ export default async (req: Request) => {
     written.push(day);
   }
 
-  const result = { today, written, skipped };
+  const result = { today, production, written, skipped };
   console.log('[rollup]', JSON.stringify(result));
   return new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json' } });
 };
