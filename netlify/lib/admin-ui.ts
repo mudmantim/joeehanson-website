@@ -91,28 +91,51 @@ const SHELL = `
  * expiring inside the installed app does not leave Android looking at a
  * document with no manifest.
  */
+/**
+ * /admin is NOT installable, and must not look like it is.
+ *
+ * It was, briefly, and that turned out to be the bug. The public site's app
+ * owns the scope `https://joeehanson.com/` -- the whole origin -- and /admin
+ * sits inside it. Chrome refreshes an installed app from whatever manifest it
+ * finds in that app's scope, so every visit to /admin was a fresh chance for
+ * the music app's start URL to be rewritten to the dashboard. It happened
+ * twice on a real phone.
+ *
+ * Chrome's own guidance is that two apps nested this way on one origin are
+ * "strongly not recommended": the inner one never gets an install prompt, and
+ * the outer one captures its URLs. So the dashboard stops advertising itself
+ * as an app here. It keeps working exactly as a page.
+ *
+ * Nothing replaces it at this address. The installable Measurement app moves
+ * to its own origin, where no nesting is possible.
+ */
 const PWA_HEAD = `
-<link rel="manifest" href="/admin/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/assets/icons/admin-180.png">
-<link rel="icon" href="/assets/icons/admin-192.png" type="image/png">
-<meta name="theme-color" content="#0f0f0e">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Measurement">`;
+<link rel="icon" href="/assets/icons/admin-192.png" type="image/png">`;
 
 /**
- * Android will not mint a separate app without a service worker, so /admin has
- * one. It is registered from here rather than from the public site's script.js,
- * which the dashboard has never loaded and still does not: opening this app
- * must not put a visit into the analytics it exists to display.
+ * Undo the worker this page used to register.
+ *
+ * Two things this must not do, both of which would be easy and wrong:
+ *
+ *   It must not touch the registration at scope "/". That is the public music
+ *   site's worker, which precaches the site and has nothing to do with any of
+ *   this. Only registrations under /admin are removed.
+ *
+ *   It must not clear storage. unregister() removes a worker; it does not
+ *   touch cookies, localStorage, IndexedDB or the Cache Storage its worker
+ *   used. The admin worker never wrote a cache entry anyway. Calling
+ *   caches.delete() here would be origin-wide and would take the music site's
+ *   precache with it -- so it is not called.
  */
 const SW_REGISTER = `<script>
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
   addEventListener('load', function () {
-    // The widened scope is what lets a bare /admin be controlled; see the
-    // service-worker-allowed header in admin.ts. If a host ever refuses it the
-    // dashboard keeps working, it just stops being installable.
-    navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin' }).catch(function () {});
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) {
+        var scope = new URL(r.scope).pathname;
+        if (scope === '/admin' || scope.indexOf('/admin/') === 0) r.unregister();
+      });
+    }).catch(function () {});
   });
 }
 </script>`;
