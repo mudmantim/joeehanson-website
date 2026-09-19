@@ -57,38 +57,7 @@ export function isProductionRequest(req: Request): boolean {
   }
 }
 
-/**
- * Whether a scheduled (Node) function is running against production.
- *
- * `CONTEXT` is a BUILD variable. It is not set in a function's runtime
- * environment, so the original check here returned false on every run and both
- * nightly jobs operated on the preview store: the rollup wrote there and the
- * prune deleted there. Production was never compacted and, more seriously, its
- * daily salts were never destroyed -- so the guarantee that a day-old visitor
- * hash cannot be recomputed was documented but not actually in force.
- *
- * The deploy context is the real signal. It is read from the function's own
- * context argument where one is passed, and from the `Netlify` global
- * otherwise; `CONTEXT` is kept last only as a harmless fallback.
- */
-export function isProductionProcess(fnContext?: { deploy?: { context?: string } }): boolean {
-  const g = globalThis as any;
-  return (
-    fnContext?.deploy?.context === 'production' ||
-    g.Netlify?.context?.deploy?.context === 'production' ||
-    (typeof process !== 'undefined' && process.env?.CONTEXT === 'production')
-  );
-}
-
-/** What each production signal reports, for the diagnostics endpoint. */
-export function productionSignals(fnContext?: { deploy?: { context?: string } }) {
-  const g = globalThis as any;
-  return {
-    fnContext: fnContext?.deploy?.context ?? null,
-    netlifyGlobal: g.Netlify?.context?.deploy?.context ?? null,
-    envCONTEXT: (typeof process !== 'undefined' ? process.env?.CONTEXT : undefined) ?? null,
-  };
-}
+export { resolveProcessEnvironment, environmentSignals, KNOWN_CONTEXTS } from './environment.js';
 
 export function storeNameFor(production: boolean): string {
   return production ? STORE_NAME : PREVIEW_STORE_NAME;

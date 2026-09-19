@@ -14,11 +14,19 @@
  */
 
 import type { Config } from '@netlify/functions';
-import { analyticsStore, isProductionProcess, keys, REPORT_TZ } from '../lib/store.ts';
+import { analyticsStore, resolveProcessEnvironment, keys, REPORT_TZ } from '../lib/store.ts';
 import { aggregateDay, ROLLUP_VERSION } from '../lib/rollup.js';
 
 export default async (req: Request, context: any) => {
-  const production = isProductionProcess(context);
+  // Refuse to run rather than guess. A rollup written to the wrong store is
+  // how this job silently skipped production for a day.
+  const env = resolveProcessEnvironment(context);
+  if (!env.known) {
+    const refusal = { refused: true, reason: env.reason, signals: env.signals };
+    console.error('[rollup] refusing to run:', JSON.stringify(refusal));
+    return new Response(JSON.stringify(refusal), { status: 503, headers: { 'content-type': 'application/json' } });
+  }
+  const production = env.production;
   const store = analyticsStore(production, { consistency: 'strong' });
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ }).format(new Date());
 
@@ -56,7 +64,7 @@ export default async (req: Request, context: any) => {
     written.push(day);
   }
 
-  const result = { today, production, written, skipped };
+  const result = { today, production, store: production ? 'jh-analytics' : 'jh-analytics-preview', via: `${env.signal}=${env.value}`, written, skipped };
   console.log('[rollup]', JSON.stringify(result));
   return new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json' } });
 };

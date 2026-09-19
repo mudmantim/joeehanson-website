@@ -11,7 +11,7 @@
  */
 
 import type { Config } from '@netlify/functions';
-import { analyticsStore, isProductionProcess, REPORT_TZ } from '../lib/store.ts';
+import { analyticsStore, resolveProcessEnvironment, REPORT_TZ } from '../lib/store.ts';
 
 const RETENTION_DAYS = { raw: 90, owner: 7, salt: 2 } as const;
 
@@ -23,7 +23,16 @@ function daysAgo(day: string, today: string): number {
 }
 
 export default async (req: Request, context: any) => {
-  const production = isProductionProcess(context);
+  // Refuse to run rather than guess. This job deletes; getting the store wrong
+  // means deleting the wrong data, and it already meant production's daily
+  // salts were never destroyed at all.
+  const env = resolveProcessEnvironment(context);
+  if (!env.known) {
+    const refusal = { refused: true, reason: env.reason, signals: env.signals };
+    console.error('[prune] refusing to run:', JSON.stringify(refusal));
+    return new Response(JSON.stringify(refusal), { status: 503, headers: { 'content-type': 'application/json' } });
+  }
+  const production = env.production;
   const store = analyticsStore(production);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ }).format(new Date());
   const deleted: Record<string, number> = { raw: 0, owner: 0, salt: 0 };

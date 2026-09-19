@@ -172,19 +172,44 @@ export default async (req: Request, context: Context): Promise<Response> => {
     const job = url.searchParams.get('job');
     const confirmed = url.searchParams.get('confirm') === 'yes';
 
-    const daysWithRaw = new Set<string>();
-    for (const b of (await store.list({ prefix: 'raw/' })).blobs) {
-      const d = b.key.split('/')[1];
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) daysWithRaw.add(d);
+    // The caller must name the environment it believes it is acting on, and it
+    // has to match what the hostname says. A maintenance call that runs against
+    // a different store than the operator intended is the whole failure being
+    // repaired here, so it is made impossible to do by accident.
+    const expect = url.searchParams.get('expect');
+    const actual = production ? 'production' : 'preview';
+    if (expect !== actual) {
+      return json({
+        error: 'environment assertion failed',
+        detail: `this host resolves to "${actual}"; pass expect=${actual} to proceed`,
+        host: url.hostname, store: storeNameFor(production),
+      }, 409);
     }
 
+    const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const dayOf = (key: string) => key.split('/')[1] ?? '';
+    const ageInDays = (day: string) =>
+      Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
+
     if (job === 'rollup') {
+      const only = url.searchParams.get('day');
+      if (only && !DAY_RE.test(only)) return json({ error: 'day must be YYYY-MM-DD' }, 400);
+
+      const days = new Set<string>();
+      for (const b of (await store.list({ prefix: 'raw/' })).blobs) {
+        const d = dayOf(b.key);
+        if (DAY_RE.test(d)) days.add(d);
+      }
+
       const written: string[] = [];
       const skipped: string[] = [];
-      for (const day of [...daysWithRaw].sort()) {
+      for (const day of [...days].sort()) {
+        if (only && day !== only) continue;
+        // Never roll up a day that is still accumulating.
         if (day >= today) { skipped.push(`${day} (still open)`); continue; }
         const existing = (await store.get(keys.rollup(day), { type: 'json' })) as any;
-        if (existing?.v === ROLLUP_VERSION && !confirmed) { skipped.push(`${day} (already rolled up)`); continue; }
+        if (existing?.v === ROLLUP_VERSION && !confirmed) { skipped.push(`${day} (already at v${ROLLUP_VERSION})`); continue; }
+
         const records = [];
         for (const b of (await store.list({ prefix: `raw/${day}/` })).blobs) {
           const rec = await store.get(b.key, { type: 'json' });
@@ -193,29 +218,53 @@ export default async (req: Request, context: Context): Promise<Response> => {
         await store.setJSON(keys.rollup(day), { ...aggregateDay(day, records), generatedAt: new Date().toISOString() });
         written.push(day);
       }
-      return json({ job, production, store: storeNameFor(production), today, written, skipped });
+      return json({ job, environment: actual, store: storeNameFor(production), today,
+                    rollupVersion: ROLLUP_VERSION, written, skipped });
     }
 
     if (job === 'prune') {
       const RETENTION: Record<string, number> = { raw: 90, owner: 7, salt: 2 };
+      // A cap on how much one call may remove. A date-handling mistake should
+      // hit this and stop, not empty the store.
+      const MAX_DELETE = 500;
+
       const plan: Record<string, string[]> = { raw: [], owner: [], salt: [] };
-      for (const prefix of ['raw', 'owner', 'salt']) {
+      const retained: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
+
+      for (const prefix of ['raw', 'owner', 'salt'] as const) {
         for (const b of (await store.list({ prefix: `${prefix}/` })).blobs) {
-          const day = b.key.split('/')[1];
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-          const age = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
-          if (age >= RETENTION[prefix]) plan[prefix].push(b.key);
+          const day = dayOf(b.key);
+          // An unparseable key is left alone rather than guessed at.
+          if (!DAY_RE.test(day)) { retained[prefix]++; continue; }
+          const age = ageInDays(day);
+          // Future-dated or same-day keys are never eligible, whatever the
+          // arithmetic says. Today's salt in particular must survive.
+          if (!Number.isFinite(age) || age < 1) { retained[prefix]++; continue; }
+          if (age >= RETENTION[prefix]) plan[prefix].push(b.key); else retained[prefix]++;
         }
       }
-      if (!confirmed) {
-        return json({ job, production, store: storeNameFor(production), today, dryRun: true,
-                      wouldDelete: Object.fromEntries(Object.entries(plan).map(([k, v]) => [k, v.length])) });
+
+      const total = Object.values(plan).reduce((a, v) => a + v.length, 0);
+      const summary = {
+        job, environment: actual, store: storeNameFor(production), today,
+        retentionDays: RETENTION,
+        wouldDelete: Object.fromEntries(Object.entries(plan).map(([k, v]) => [k, v.length])),
+        retained,
+        oldestEligible: Object.fromEntries(
+          Object.entries(plan).map(([k, v]) => [k, v.map(dayOf).sort()[0] ?? null])),
+      };
+
+      if (total > MAX_DELETE) {
+        return json({ ...summary, refused: true,
+                      reason: `plan of ${total} exceeds the ${MAX_DELETE} safety cap` }, 409);
       }
+      if (!confirmed) return json({ ...summary, dryRun: true });
+
       const deleted: Record<string, number> = { raw: 0, owner: 0, salt: 0 };
       for (const [prefix, list] of Object.entries(plan)) {
         for (const key of list) { await store.delete(key); deleted[prefix]++; }
       }
-      return json({ job, production, store: storeNameFor(production), today, dryRun: false, deleted });
+      return json({ ...summary, dryRun: false, deleted });
     }
 
     return json({ error: 'unknown job', jobs: ['rollup', 'prune'] }, 400);
