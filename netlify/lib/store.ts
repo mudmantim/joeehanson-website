@@ -57,10 +57,7 @@ export function isProductionRequest(req: Request): boolean {
   }
 }
 
-/** For the Node scheduled function, which has no request to look at. */
-export function isProductionProcess(): boolean {
-  return typeof process !== 'undefined' && process.env?.CONTEXT === 'production';
-}
+export { resolveProcessEnvironment, environmentSignals, KNOWN_CONTEXTS } from './environment.js';
 
 export function storeNameFor(production: boolean): string {
   return production ? STORE_NAME : PREVIEW_STORE_NAME;

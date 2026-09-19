@@ -4,7 +4,7 @@
  * Add a file to tests/, default-export a function taking `t`, list it below.
  */
 
-const FILES = ['./precache.test.mjs', './engagement.test.mjs', './deploy-shape.test.mjs', './rollup.test.mjs', './attribution.test.mjs'];
+const FILES = ['./precache.test.mjs', './engagement.test.mjs', './deploy-shape.test.mjs', './rollup.test.mjs', './attribution.test.mjs', './environment.test.mjs'];
 
 let passed = 0;
 const failures = [];
