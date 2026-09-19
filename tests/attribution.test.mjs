@@ -6,6 +6,9 @@
  * actually comes from.
  */
 
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   classifyAttribution, classifyOutbound, normaliseToken, sourceKey, campaignKey,
   SOURCES, MEDIUMS, STREAMING_SERVICES,
@@ -150,4 +153,30 @@ export default function run(t) {
     t.ok(SOURCES.includes(s), `the vocabulary covers ${s}`);
   }
   t.ok(MEDIUMS.includes('social') && MEDIUMS.includes('paid_social'), 'mediums cover organic and paid social');
+}
+
+/**
+ * Every service the site actually links to must be recognised.
+ *
+ * Found on the Phase-3 preview: a click to iHeartRadio classified as "other"
+ * and did not count as listening intent, because the service list predated the
+ * catalog gaining iHeart links. A link the site offers and the analytics does
+ * not understand is an undercount nobody would notice.
+ */
+export function linkedServicesAreClassified(t) {
+  const releases = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'public/data/releases.json'), 'utf8'));
+
+  const hosts = new Set();
+  for (const rel of releases) {
+    for (const url of Object.values(rel.links ?? {})) hosts.add(new URL(url).hostname);
+    for (const track of rel.tracks ?? []) if (track.url) hosts.add(new URL(track.url).hostname);
+  }
+
+  t.ok(hosts.size >= 5, `the catalog links to ${hosts.size} distinct hosts`);
+  for (const host of hosts) {
+    const o = classifyOutbound(host, '/');
+    t.ok(o.service !== 'other', `${host} is a recognised service, not "other" (got ${o.service})`);
+    t.ok(o.kind === 'streaming', `${host} counts as listening intent (got ${o.kind})`);
+  }
 }
