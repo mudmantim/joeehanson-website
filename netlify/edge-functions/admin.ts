@@ -23,6 +23,7 @@ import {
 import { analyticsStore, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
 import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange, ROLLUP_VERSION } from '../lib/rollup.js';
 import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
+import { ADMIN_MANIFEST, ADMIN_SW } from '../lib/admin-pwa.ts';
 
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
 const OWNER_TTL = 365 * 24 * 60 * 60; // 1 year
@@ -85,6 +86,35 @@ export default async (req: Request, context: Context): Promise<Response> => {
 
   if (!secret || !pwHash || !pwSalt) {
     return html('<!doctype html><meta charset=utf-8><title>Not configured</title><p>Analytics is not configured.', 503);
+  }
+
+  // ---- The installable shell ----------------------------------------------
+  // Served before the gate because Google's WebAPK service fetches both of
+  // these itself, without cookies, when Android mints the app. See
+  // ../lib/admin-pwa.ts for why that costs nothing: no route that returns data
+  // is reachable from here, and both responses are constants.
+  if (path === '/admin/manifest.webmanifest') {
+    return new Response(ADMIN_MANIFEST, {
+      headers: {
+        'content-type': 'application/manifest+json; charset=utf-8',
+        'cache-control': 'no-cache',
+        'x-robots-tag': 'noindex, nofollow, noarchive',
+      },
+    });
+  }
+
+  if (path === '/admin/sw.js') {
+    return new Response(ADMIN_SW, {
+      headers: {
+        'content-type': 'text/javascript; charset=utf-8',
+        'cache-control': 'no-cache',
+        // A worker served from /admin/ may only claim /admin/ by default, which
+        // would leave a bare /admin -- the start_url, and what every redirect
+        // here points at -- uncontrolled and therefore not installable.
+        'service-worker-allowed': '/admin',
+        'x-robots-tag': 'noindex, nofollow, noarchive',
+      },
+    });
   }
 
   const session = await verifyToken(secret, 'adm', readCookie(req, 'jh_adm'));
