@@ -1,4 +1,4 @@
-const CACHE = 'joeehanson-v10';
+const CACHE = 'joeehanson-v11';
 
 const PRECACHE = [
   '/',
@@ -15,6 +15,7 @@ const PRECACHE = [
   '/data/socials.json',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
+  '/assets/icons/icon-maskable-512.png',
   '/assets/images/og-half-married-half-alone.jpg',
   '/assets/images/half-married-half-alone.webp',
   '/assets/images/110.webp',

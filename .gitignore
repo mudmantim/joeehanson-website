@@ -28,3 +28,7 @@ Thumbs.db
 
 # Local secrets for `netlify dev`. Never committed.
 .env
+
+# Working copies of artwork dropped in the repo root; the approved sources live
+# in assets-src/ and public/assets/images/.
+ChatGPT Image *.png
