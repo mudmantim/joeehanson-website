@@ -247,6 +247,54 @@ recorded as outbound but not as intent, because following is not listening.
 the number that separates a clip that got views from a clip that sent someone to
 press play.
 
+## The installed app
+
+`/admin` installs on Android as its own app, separate from the public site's
+PWA. Two files make that work, and both are served by the admin edge function
+rather than from `public/`, so the dashboard still has no file to leak:
+
+| Route | What it is |
+|---|---|
+| `/admin/manifest.webmanifest` | name, icons, `start_url`, `scope` |
+| `/admin/sw.js` | a service worker that stores nothing |
+
+Neither sits behind the session cookie, and that is deliberate rather than an
+oversight. Chrome does not build the installed app itself — it hands the
+manifest and icon URLs to Google's WebAPK service, which fetches them from its
+own network with no cookies. Anything needed for installation that requires the
+session simply fails to install. Nothing is lost by leaving them open: the
+manifest is a name and an icon path, the worker is a constant, and every route
+that returns a number is still behind the gate.
+
+**It is a separate app because of one field.** `id` is `/admin`; the public
+manifest's is `/`. Make them equal and the installed dashboard replaces the
+artist's app on the home screen rather than sitting beside it.
+`tests/admin-pwa.test.mjs` fails if they ever converge.
+
+**It caches nothing.** The worker exists only because Android will not mint a
+separate app without one. It never touches the Cache Storage API — no cache
+name, no precache list, no `put`, no `match` — so no dashboard HTML, API
+response, cookie or figure is ever written to the phone. The only thing it
+generates is a plain "no connection" page for a failed page load, because in an
+installed app there is no address bar and no reload button. The public worker
+in `public/sw.js` separately bypasses `/admin` and `/api/`, as it has since
+Phase 0.
+
+**Opening it records nothing.** The dashboard has never loaded `script.js` and
+still does not, so looking at the numbers does not change them. The owner
+cookie is a second, independent layer under that.
+
+**Icons** are `public/assets/icons/admin-*.png` — a flat bar mark, deliberately
+nothing like the porch-lantern photograph the public app uses, so the two are
+not confused on a home screen. They live under `public/` because the WebAPK
+service has to be able to fetch them.
+
+**Sessions still last seven days.** On day eight the dashboard clears the
+figures off the screen, says the session expired, and goes to the sign-in form.
+Before this it parsed the 401 as if it were data and left half a dashboard
+behind, which inside an app with no address bar was the only thing an expired
+session ever showed.
+
 ## Not built yet
 
 Everything in the approved design is built. Natural next steps, none committed:

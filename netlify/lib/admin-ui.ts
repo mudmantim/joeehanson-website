@@ -28,13 +28,94 @@ const SHELL = `
          padding:.5rem 1rem;cursor:pointer;letter-spacing:.1em}
   button:hover{background:rgba(200,121,65,.1)}
   input[type=password]{background:var(--mid);border:1px solid var(--line);color:var(--cream);padding:.6rem .8rem;width:100%}
-  table{width:100%;border-collapse:collapse;font-size:.9rem}
-  th,td{text-align:left;padding:.4rem 0;border-bottom:1px solid var(--line)}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse;font-size:.9rem;min-width:20rem}
+  /* Horizontal padding is load-bearing, not decoration. With padding:.4rem 0 a
+     narrow screen renders "direct / none20" and a header reading
+     "ENGAGEDSTREAMING": the columns never overflow, they just compress until
+     they touch, so nothing that measures overflow can detect it. */
+  th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th:first-child,td:first-child{padding-left:0}
+  th:last-child,td:last-child{padding-right:0}
+  th:not(:first-child),td:not(:first-child){text-align:right;white-space:nowrap}
+  td:first-child{overflow-wrap:anywhere}
   th{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);font-weight:400}
   pre{background:var(--mid);border:1px solid var(--line);padding:1rem;overflow:auto;
       font-size:.75rem;font-family:ui-monospace,monospace;color:var(--dim);line-height:1.5}
   .note{font-size:.8rem;color:var(--dim);font-style:italic}
+
+  /* ---- Phone ------------------------------------------------------------
+     Most of this is ordinary tightening. The table rule is not: below 560px
+     each row becomes a block with its label on its own line and every figure
+     carrying its own heading, because five columns of text cannot share 360px
+     minus padding without colliding, and a horizontally scrolling table hides
+     the very columns worth reading. Headings come from data-l on each cell, so
+     a row is readable without the header it no longer sits under. */
+  @media (max-width:640px){
+    body{padding:1.25rem 1rem}
+    h1{font-size:1.5rem}
+    .sub{margin-bottom:1.25rem;letter-spacing:.22em}
+    .row{gap:.6rem}
+    .tile{flex:1 1 calc(50% - .3rem);min-width:calc(50% - .3rem);padding:.8rem .9rem}
+    .tile b{font-size:1.5rem}
+    .tile span{font-size:.56rem;letter-spacing:.18em}
+    .card{padding:1rem .9rem}
+    pre{font-size:.7rem}
+    /* Everything you tap is a filter, and a filter that is hard to hit is a
+       filter you stop using. 42px is roughly a fingertip. */
+    button{min-height:42px}
+    .ranges button{padding:.5rem .9rem}
+    .ranges input[type=date]{min-height:42px;flex:1 1 8.5rem;min-width:0}
+    .ranges{gap:.45rem}
+  }
+  @media (max-width:560px){
+    .tw{overflow-x:visible}
+    .tw table,.tw tbody,.tw tr,.tw td{display:block;width:auto}
+    .tw thead{position:absolute;left:-9999px}
+    .tw table{min-width:0}
+    .tw tr{border-bottom:1px solid var(--line);padding:.65rem 0}
+    .tw tr:last-child{border-bottom:0}
+    .tw td{border:0;padding:0;text-align:left;white-space:normal}
+    .tw td:first-child{font-size:.95rem;color:var(--cream);margin-bottom:.4rem}
+    .tw td:not(:first-child){display:inline-block;margin:0 1.15rem .1rem 0;font-size:.82rem}
+    .tw td:not(:first-child):last-child{margin-right:0}
+    .tw td:not(:first-child)::before{content:attr(data-l) " ";color:var(--dim);
+      font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;margin-right:.35rem}
+  }
 `;
+
+/**
+ * The head that makes /admin installable, and nothing else.
+ *
+ * It appears on the sign-in page as well as the dashboard so that a session
+ * expiring inside the installed app does not leave Android looking at a
+ * document with no manifest.
+ */
+const PWA_HEAD = `
+<link rel="manifest" href="/admin/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/icons/admin-180.png">
+<link rel="icon" href="/assets/icons/admin-192.png" type="image/png">
+<meta name="theme-color" content="#0f0f0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Measurement">`;
+
+/**
+ * Android will not mint a separate app without a service worker, so /admin has
+ * one. It is registered from here rather than from the public site's script.js,
+ * which the dashboard has never loaded and still does not: opening this app
+ * must not put a visit into the analytics it exists to display.
+ */
+const SW_REGISTER = `<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', function () {
+    // The widened scope is what lets a bare /admin be controlled; see the
+    // service-worker-allowed header in admin.ts. If a host ever refuses it the
+    // dashboard keeps working, it just stops being installable.
+    navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin' }).catch(function () {});
+  });
+}
+</script>`;
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -44,14 +125,14 @@ export function renderLogin(error?: string): string {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
-<title>Sign in</title><style>${SHELL}
-body{max-width:340px;padding-top:18vh}</style></head><body>
+<title>Sign in</title>${PWA_HEAD}<style>${SHELL}
+body{max-width:340px;padding-top:12vh}</style></head><body>
 <h1>Sign in</h1><p class="sub">joeehanson.com</p>
 ${error ? `<p class="no" style="margin-bottom:1rem">${escapeHtml(error)}</p>` : ''}
 <form method="post" action="/api/login">
   <input type="password" name="password" autocomplete="current-password" autofocus required>
   <p style="margin-top:1rem"><button type="submit">Continue</button></p>
-</form></body></html>`;
+</form>${SW_REGISTER}</body></html>`;
 }
 
 export function renderDashboard(owner: { excluded: boolean; expiresAt: number | null; production: boolean }): string {
@@ -65,7 +146,7 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
-<title>Measurement</title><style>${SHELL}
+<title>Measurement</title>${PWA_HEAD}<style>${SHELL}
   .ranges{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:1.5rem}
   .ranges button{padding:.4rem .9rem;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase}
   .ranges button[aria-pressed=true]{background:var(--amber);color:var(--black);border-color:var(--amber)}
@@ -287,28 +368,62 @@ let loadSeq = 0;
 
 /* A sortable-by-nothing, deliberately plain table. Rows are ordered by
    sessions descending so the answer is the top row. */
+/* Every cell after the first carries its own heading in data-l. On a phone the
+   header row is taken out of the flow and each figure prints its own label
+   instead, which is the only reason five columns fit in 360px without running
+   into each other. */
+function cells(labels, values) {
+  return values.map((v,i) => '<td data-l="'+esc(labels[i])+'">'+v+'</td>').join('');
+}
+
 function table(rows, firstHeader) {
   if (!rows.length) return '<p class="note">Nothing recorded in this range.</p>';
-  const head = '<tr><th>'+esc(firstHeader)+'</th><th>Sessions</th><th>Avg engaged</th>'+
-    '<th>To streaming</th><th>Intent</th></tr>';
+  const cols = ['Sessions','Avg engaged','To streaming','Intent'];
+  const head = '<tr><th>'+esc(firstHeader)+'</th>'+cols.map(c => '<th>'+esc(c)+'</th>').join('')+'</tr>';
   const body = rows.map(([k, v]) => {
     const avg = v.sessions ? Math.round(v.engagedMs / v.sessions) : 0;
     const intent = v.sessions ? v.intentSessions / v.sessions : 0;
-    return '<tr><td>'+esc(k)+'</td><td>'+v.sessions+'</td><td>'+fmtMs(avg)+'</td><td>'+
-      v.streaming+'</td><td>'+pct(intent)+'</td></tr>';
+    return '<tr><td data-l="'+esc(firstHeader)+'">'+esc(k)+'</td>'+
+      cells(cols, [v.sessions, fmtMs(avg), v.streaming, pct(intent)])+'</tr>';
   }).join('');
-  return '<table><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+  return '<div class="tw"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
 }
 
 function countTable(obj, firstHeader, transform) {
   const rows = Object.entries(obj || {}).filter(([,n]) => n > 0).sort((a,b) => b[1]-a[1]).slice(0, 12);
   if (!rows.length) return '<p class="note">Nothing recorded in this range.</p>';
-  return '<table><thead><tr><th>'+esc(firstHeader)+'</th><th>Clicks</th></tr></thead><tbody>'+
-    rows.map(([k,n]) => '<tr><td>'+esc(transform ? transform(k) : k)+'</td><td>'+n+'</td></tr>').join('')+
-    '</tbody></table>';
+  return '<div class="tw"><table><thead><tr><th>'+esc(firstHeader)+'</th><th>Clicks</th></tr></thead><tbody>'+
+    rows.map(([k,n]) => '<tr><td data-l="'+esc(firstHeader)+'">'+esc(transform ? transform(k) : k)+'</td>'+
+      cells(['Clicks'], [n])+'</tr>').join('')+
+    '</tbody></table></div>';
 }
 
 const bySessions = (obj) => Object.entries(obj || {}).sort((a,b) => b[1].sessions - a[1].sessions).slice(0, 15);
+
+/* The session lasts seven days and then the cookie is simply gone. Before this,
+   a 401 was parsed as if it were stats: the page read a session count off an
+   error object, threw, and left half a dashboard with no hint why. In a browser
+   you could at least see the address bar; in the installed app there is no
+   address bar and no reload button, so that silent break would be the only
+   thing an expired session ever showed. Send it to the sign-in screen instead. */
+let signedOutAlready = false;
+function signedOut() {
+  if (signedOutAlready) return;
+  signedOutAlready = true;
+  document.body.innerHTML =
+    '<h1>Signed out</h1><p class="sub">joeehanson.com</p>' +
+    '<div class="card"><p>Your session has expired.</p>' +
+    '<p style="margin-top:1rem"><button type="button" id="relogin">Sign in</button></p></div>';
+  document.getElementById('relogin').addEventListener('click', () => location.assign('/admin'));
+  location.assign('/admin');   // which renders the sign-in form
+}
+
+/* Every authenticated read goes through here so none of them can miss a 401. */
+async function api(url) {
+  const res = await fetch(url, {cache:'no-store'});
+  if (res.status === 401) { signedOut(); throw new Error('signed out'); }
+  return res.json();
+}
 
 async function load() {
   const seq = ++loadSeq;
@@ -316,8 +431,9 @@ async function load() {
   document.getElementById('rangelabel').textContent = 'loading\u2026';
   let d;
   try {
-    d = await (await fetch('/api/stats?'+qs, {cache:'no-store'})).json();
+    d = await api('/api/stats?'+qs);
   } catch (err) {
+    if (signedOutAlready) return;
     if (seq === loadSeq) document.getElementById('rangelabel').textContent = 'Could not load stats.';
     return;
   }
@@ -390,19 +506,24 @@ document.getElementById('apply').addEventListener('click', () => {
 document.getElementById('test').addEventListener('click', async () => {
   const out = document.getElementById('testout');
   out.textContent = 'checking…';
-  const before = (await (await fetch('/api/stats?range=today',{cache:'no-store'})).json()).ownerExcludedToday;
-  const verdict = await (await fetch('/api/test-event',{cache:'no-store'})).json();
-  await fetch('/api/e', {method:'POST', cache:'no-store',
-    headers:{'content-type':'application/json'},
-    body: JSON.stringify({events:[{eid:crypto.randomUUID(),sid:'test-'+crypto.randomUUID(),t:'pv',ts:Date.now(),path:'/__test',test:true}]})});
-  await new Promise(r => setTimeout(r, 1500));
-  const after = (await (await fetch('/api/stats?range=today',{cache:'no-store'})).json()).ownerExcludedToday;
-  out.textContent = verdict.reason + ' — excluded-today went ' + before + ' → ' + after +
-    (verdict.wouldBeCounted ? ' (counted as a normal visit)' : ' (diverted to the excluded log)');
+  try {
+    const before = (await api('/api/stats?range=today')).ownerExcludedToday;
+    const verdict = await api('/api/test-event');
+    await fetch('/api/e', {method:'POST', cache:'no-store',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({events:[{eid:crypto.randomUUID(),sid:'test-'+crypto.randomUUID(),t:'pv',ts:Date.now(),path:'/__test',test:true}]})});
+    await new Promise(r => setTimeout(r, 1500));
+    const after = (await api('/api/stats?range=today')).ownerExcludedToday;
+    out.textContent = verdict.reason + ' — excluded-today went ' + before + ' → ' + after +
+      (verdict.wouldBeCounted ? ' (counted as a normal visit)' : ' (diverted to the excluded log)');
+  } catch (err) {
+    if (!signedOutAlready) out.textContent = 'Could not reach the server.';
+    return;
+  }
   load();
 });
 
 load();
-</script>
+</script>${SW_REGISTER}
 </body></html>`;
 }
