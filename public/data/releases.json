@@ -6,7 +6,9 @@
     "type": "LP",
     "label": "Porch Light Records",
     "year": "September 18, 2026",
+    "spotify": "https://open.spotify.com/album/0U05MZdC2Ji4aaFgp2Hptx",
     "links": {
+      "Spotify": "https://open.spotify.com/album/0U05MZdC2Ji4aaFgp2Hptx",
       "Apple Music": "https://music.apple.com/us/album/half-married-half-alone/6813626040",
       "YouTube Music": "https://music.youtube.com/browse/MPREb_Ata1pgZi2Rr",
       "Amazon Music": "https://music.amazon.com/albums/B0HK8XS74F",
@@ -14,15 +16,15 @@
       "iHeartRadio": "https://www.iheart.com/artist/joe-e-hanson-50504383/albums/half-married-half-alone-433506780/"
     },
     "tracks": [
-      { "title": "I'm Still Here",              "url": "https://music.apple.com/us/album/im-still-here/6813626040?i=6813626041" },
-      { "title": "Say It Back",                 "url": "https://music.apple.com/us/album/say-it-back/6813626040?i=6813626042" },
-      { "title": "Forgive Yourself",            "url": "https://music.apple.com/us/album/forgive-yourself/6813626040?i=6813626043" },
-      { "title": "I Don't Know How to Do This", "url": "https://music.apple.com/us/album/i-dont-know-how-to-do-this/6813626040?i=6813626044" },
-      { "title": "The Ghost of the Board",      "url": "https://music.apple.com/us/album/the-ghost-of-the-board/6813626040?i=6813626046" },
-      { "title": "Half Married, Half Alone",    "url": "https://music.apple.com/us/album/half-married-half-alone/6813626040?i=6813626047" },
-      { "title": "If I Disappeared Tonight",    "url": "https://music.apple.com/us/album/if-i-disappeared-tonight/6813626040?i=6813626048" },
-      { "title": "The Weight of Staying",       "url": "https://music.apple.com/us/album/the-weight-of-staying/6813626040?i=6813626050" },
-      { "title": "Same Damn Shame",             "url": "https://music.apple.com/us/album/same-damn-shame/6813626040?i=6813626052" }
+      { "title": "I'm Still Here",             "url": "https://open.spotify.com/track/1UdPn4jXkZ50Pq4eWNS9MQ" },
+      { "title": "Say It Back",                "url": "https://open.spotify.com/track/5uJ8U8jKmAsdop1BNZeaDq" },
+      { "title": "Forgive Yourself",           "url": "https://open.spotify.com/track/47C2G8BqtcOFo8dmlsJQ5F" },
+      { "title": "I Don't Know How to Do This", "url": "https://open.spotify.com/track/4PNr32KkyvQI1Q2apri3S0" },
+      { "title": "The Ghost of the Board",     "url": "https://open.spotify.com/track/10PK4c9QDIDjkIECPN1JvQ" },
+      { "title": "Half Married, Half Alone",   "url": "https://open.spotify.com/track/1U6kNCIJL3PtLaya0BdcU1" },
+      { "title": "If I Disappeared Tonight",   "url": "https://open.spotify.com/track/1mMrsDYQ2Qbewg9OD7htIC" },
+      { "title": "The Weight of Staying",      "url": "https://open.spotify.com/track/4S0PZrrd1qcABmCiWRgyap" },
+      { "title": "Same Damn Shame",            "url": "https://open.spotify.com/track/2Rs2VO2g9Wd8zmwfvlS9xF" }
     ]
   },
   {
