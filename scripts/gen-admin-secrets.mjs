@@ -1,9 +1,14 @@
 /**
  * Generates the three environment variables the analytics system needs.
  *
- *   node scripts/gen-admin-secrets.mjs [password]
+ *   node scripts/gen-admin-secrets.mjs
  *
- * With no argument a strong password is generated for you. The password itself
+ * First-time setup only: generates all three variables, including JH_SECRET.
+ * A strong password is generated for you and shown once.
+ *
+ * To CHANGE the password later, use scripts/set-admin-password.mjs instead --
+ * it prompts without echoing and leaves JH_SECRET alone, so existing sessions
+ * and owner-exclusion cookies survive. The password itself
  * is never stored anywhere — only its PBKDF2 hash goes into the environment,
  * so a leak of the Netlify env vars does not hand over admin access.
  *
@@ -27,7 +32,13 @@ function generatePassword() {
   return [pick(), pick(), pick(), pick(), randomHex(2)].join('-');
 }
 
-const password = process.argv[2] ?? generatePassword();
+if (process.argv.length > 2) {
+  console.error('Refusing a password given as an argument — it would be recorded in your shell history.');
+  console.error('To set a password you choose, use: node scripts/set-admin-password.mjs');
+  process.exit(2);
+}
+
+const password = generatePassword();
 const salt = randomHex(16);
 const hash = await pbkdf2Hex(password, salt);
 const secret = randomHex(32);

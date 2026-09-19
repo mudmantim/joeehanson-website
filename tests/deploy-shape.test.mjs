@@ -118,3 +118,50 @@ export function environmentIsolation(t) {
   const collect = readFileSync(join(root, 'netlify/edge-functions/collect.ts'), 'utf8');
   t.ok(/isProductionRequest\(req\)/.test(collect), 'collector decides environment per request');
 }
+
+/**
+ * The credential scripts must not leak what they are handling.
+ *
+ * A password given on a command line lands in shell history and the process
+ * list; one echoed to the terminal lands in scrollback. The current admin
+ * password reached both, which is the reason it is being rotated.
+ */
+export function credentialHandling(t) {
+  const setPw = readFileSync(join(root, 'scripts/set-admin-password.mjs'), 'utf8');
+  const genAll = readFileSync(join(root, 'scripts/gen-admin-secrets.mjs'), 'utf8');
+
+  for (const [name, src] of [['set-admin-password', setPw], ['gen-admin-secrets', genAll]]) {
+    t.ok(/process\.argv\.length > 2/.test(src) && /process\.exit\(2\)/.test(src),
+      `${name} refuses a password passed as an argument`);
+    t.ok(!/writeFileSync|writeFile\(|appendFile|createWriteStream/.test(src),
+      `${name} writes no file`);
+  }
+
+  // The rotation script must prompt with echo off and never print the entry.
+  t.ok(/setRawMode\(true\)/.test(setPw), 'set-admin-password disables terminal echo');
+  t.ok(/isTTY/.test(setPw), 'set-admin-password requires an interactive terminal');
+  t.ok(/first !== second/.test(setPw), 'set-admin-password asks twice and compares');
+  // The real risk is interpolating the captured value, not the word appearing
+  // in the script's own prose.
+  t.ok(!/\$\{\s*(first|second)\s*\}/.test(setPw),
+    'set-admin-password never interpolates the entered password into output');
+  t.ok(!/console\.(log|error)\(\s*(first|second)\s*\)/.test(setPw),
+    'set-admin-password never logs the entered password directly');
+
+  // It must not touch the signing secret, which would sign everyone out and
+  // un-mark every excluded browser.
+  t.ok(!/JH_SECRET\s*[:=]/.test(setPw), 'set-admin-password does not generate a new JH_SECRET');
+  t.ok(/JH_ADMIN_PW_SALT/.test(setPw) && /JH_ADMIN_PW_HASH/.test(setPw),
+    'set-admin-password emits exactly the two password variables');
+  t.ok(/Leave JH_SECRET exactly as it is/.test(setPw),
+    'set-admin-password warns against changing JH_SECRET');
+
+  // Its PBKDF2 parameters must match the server, or a new password would never
+  // verify and the only operator would be locked out.
+  const server = readFileSync(join(root, 'netlify/lib/crypto.ts'), 'utf8');
+  const serverIters = server.match(/iterations = ([0-9_]+)/)?.[1];
+  const scriptIters = setPw.match(/ITERATIONS = ([0-9_]+)/)?.[1];
+  t.equal(scriptIters, serverIters, 'PBKDF2 iterations match the server');
+  t.ok(/deriveBits\([\s\S]*?key,\s*256\s*\)/.test(setPw), 'script derives 256 bits, as the server does');
+  t.ok(/hash: 'SHA-256'/.test(setPw), 'script uses SHA-256, as the server does');
+}
