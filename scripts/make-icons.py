@@ -8,21 +8,20 @@ This is a one-off asset generator, not part of any build. It exists so the
 icons can be regenerated and reviewed rather than appearing in the repository
 as binaries nobody can reproduce.
 
-Neither image is redrawn, recoloured or altered. The public icon is a CROP of
-the approved "The Man Under the Ash" cover already in the repository; the
+Neither image is redrawn, recoloured or altered; both are crops only. The
+public icon comes from the text-free portrait supplied 2026-09-20; the
 Measurement icon is the approved artwork used whole.
 
-The crop box is the interesting part. The cover has lettering, and an icon must
-carry none:
+Neither source carries lettering, so the crops are chosen purely for how each
+icon reads small. The public one is tight on the head and shoulders: the
+previous version was a wide frame from the album cover, and at 48 pixels -- the
+size that actually decides whether you can tell two apps apart on a home
+screen -- Joe's face was a handful of dark pixels.
 
-    title  "THE MAN UNDER THE ASH"   occupies x <=  1649
-    artist "JOE E. HANSON"           occupies x <=  1272
-
-so any crop whose left edge is at or beyond x = 1400 is word-free by
-construction, at any height. JOE_CROP starts at 1400. It also keeps the guitar
-in frame, which is what stops the public icon reading as the same picture as
-Measurement's at 48 pixels: both are Joe, in the same sepia, and without some
-second object they are one dark smudge apiece on a home screen.
+That does bring it closer in feel to the Measurement icon, which is also a
+portrait of the same man in the same sepia. They stay apart because Measurement
+carries four bright amber bars, the lightest thing in that tile at any size,
+and because PorchLight keeps its lantern.
 """
 
 import os
@@ -31,10 +30,19 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ICONS = os.path.join(ROOT, 'public', 'assets', 'icons')
 
-# Approved cover, already in the repo. Crop only: left edge 1400 clears all
-# lettering, and the box keeps Joe and the guitar.
-ASH = os.path.join(ROOT, 'public', 'assets', 'images', '126.jpg')
-JOE_CROP = (1400, 1200, 2900, 2700)
+# Approved text-free portrait, supplied 2026-09-20. Crop only: the figure is
+# untouched.
+#
+# The crop is tight on the head and shoulders on purpose. The previous public
+# icon was a wider frame taken from the album cover, and at 48 pixels -- which
+# is the size that actually matters on a home screen -- Joe's face was a few
+# dark pixels. Face first, everything else second.
+#
+# It does bring this closer in feel to the Measurement icon, which is also a
+# portrait of the same man. They stay apart because Measurement carries four
+# bright amber bars, which are the lightest thing in that tile at any size.
+ASH = os.path.join(ROOT, 'assets-src', 'joe-portrait-source.png')
+JOE_CROP = (405, 215, 805, 615)
 
 # Approved Measurement artwork, used whole.
 MEASUREMENT = os.path.join(ROOT, 'assets-src', 'measurement-source.png')
@@ -51,8 +59,9 @@ def square(im):
 
 
 def write(im, name, size):
+    px = int(str(size).split('-')[0])
     path = os.path.join(ICONS, f'{name}-{size}.png')
-    square(im).resize((size, size), Image.LANCZOS).save(path, 'PNG', optimize=True)
+    square(im).resize((px, px), Image.LANCZOS).save(path, 'PNG', optimize=True)
     return path
 
 
@@ -76,13 +85,16 @@ def main():
     os.makedirs(ICONS, exist_ok=True)
     written = []
 
+    # The -v2 suffix is load-bearing, not decoration. Chrome compares an
+    # installed app against the manifest; if an icon's URL is unchanged it has
+    # no reason to fetch it again, so replacing the bytes at the same path can
+    # go unseen on an installed app indefinitely. A new filename is the signal.
     joe = Image.open(ASH).convert('RGB').crop(JOE_CROP)
     for size in (180, 192, 512):
-        written.append(write(joe, 'icon', size))
-    written.append(
-        maskable(joe, 512, corner_colour(joe)).save(
-            os.path.join(ICONS, 'icon-maskable-512.png'), 'PNG', optimize=True)
-        or os.path.join(ICONS, 'icon-maskable-512.png'))
+        written.append(write(joe, 'icon', f'{size}-v2'))
+    maskable(joe, 512, corner_colour(joe)).save(
+        os.path.join(ICONS, 'icon-maskable-512-v2.png'), 'PNG', optimize=True)
+    written.append(os.path.join(ICONS, 'icon-maskable-512-v2.png'))
 
     # apple-touch-icon is referenced directly by index.html, not the manifest.
     joe.resize((180, 180), Image.LANCZOS).save(

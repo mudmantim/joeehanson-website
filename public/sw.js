@@ -1,4 +1,4 @@
-const CACHE = 'joeehanson-v12';
+const CACHE = 'joeehanson-v13';
 
 const PRECACHE = [
   '/',
@@ -13,9 +13,9 @@ const PRECACHE = [
   '/data/releases.json',
   '/data/fragments.json',
   '/data/socials.json',
-  '/assets/icons/icon-192.png',
-  '/assets/icons/icon-512.png',
-  '/assets/icons/icon-maskable-512.png',
+  '/assets/icons/icon-192-v2.png',
+  '/assets/icons/icon-512-v2.png',
+  '/assets/icons/icon-maskable-512-v2.png',
   '/assets/images/og-half-married-half-alone.jpg',
   '/assets/images/half-married-half-alone.webp',
   '/assets/images/110.webp',

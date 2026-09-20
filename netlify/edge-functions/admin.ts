@@ -190,6 +190,33 @@ export default async (req: Request, context: Context): Promise<Response> => {
     const until = who.valid && who.expiresAt
       ? new Date(who.expiresAt * 1000).toISOString().slice(0, 10)
       : '';
+
+    // ---- State probe ------------------------------------------------------
+    // The dashboard needs to show ONE action, not both, which means it has to
+    // know the answer -- and it cannot read this cookie: HttpOnly rules out
+    // script, and a credentialed cross-origin endpoint was ruled out on
+    // purpose. But an image's intrinsic size IS readable across origins
+    // without CORS, so the state rides back as the height of a 1-pixel-wide
+    // SVG. Two pixels tall means excluded.
+    //
+    // It is a trick, and it is written down here rather than being clever in
+    // silence. The alternative was a credentialed CORS endpoint on the apex,
+    // which is more surface for the same answer.
+    if (url.searchParams.has('probe')) {
+      return new Response(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="${who.valid ? 2 : 1}"/>`,
+        {
+          headers: {
+            'content-type': 'image/svg+xml; charset=utf-8',
+            'cache-control': 'no-store, no-cache, must-revalidate, private, max-age=0',
+            'pragma': 'no-cache',
+            'vary': 'Cookie',
+            'x-robots-tag': 'noindex, nofollow, noarchive',
+          },
+        },
+      );
+    }
+
     const svg = who.valid
       ? ownerBadge('#7fa86a', 'EXCLUDED \u2713', `expires ${until}`)
       : ownerBadge('#c87941', 'NOT EXCLUDED', 'visits from this browser are being counted');

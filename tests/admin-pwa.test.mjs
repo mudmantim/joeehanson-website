@@ -317,6 +317,31 @@ export async function ownerExclusion(t) {
   t.equal((collectSrc.match(/jh_own/g) ?? []).length, 1, 'the collector reads one cookie name');
   t.ok(!/jh_own[a-z_]/.test(collectSrc + src), 'and no variant name exists anywhere');
 
+  // ---- One action, chosen from verified state ----------------------------
+  // The page cannot read jh_own, so the apex answers a 1px-wide probe whose
+  // HEIGHT carries the state -- intrinsic image size is readable across
+  // origins without CORS. Two tall means excluded.
+  t.ok(/url\.searchParams\.has\('probe'\)/.test(code), 'the badge route has a probe mode');
+  const probeBlock = code.slice(code.indexOf("searchParams.has('probe')"), code.indexOf("searchParams.has('probe')") + 700);
+  t.ok(/width="1" height="\$\{who\.valid \? 2 : 1\}"/.test(probeBlock),
+       'the probe encodes exclusion as height 2 vs 1');
+  t.ok(/'cache-control': 'no-store/.test(probeBlock), 'the probe is uncacheable');
+  t.ok(/'vary': 'Cookie'/.test(probeBlock), 'and varies on Cookie');
+
+  const dash = renderDashboard({ production: true, adminHost: true, publicOrigin: 'https://joeehanson.com',
+    returnTo: 'https://admin.joeehanson.com/admin', badgeToken: 'b', setToken: 's', nonce: 'nz' });
+  t.ok(dash.includes('probe=1'), 'the dashboard requests the probe');
+  t.ok(dash.includes('data-own="on"') && dash.includes('data-own="off"'),
+       'both forms are rendered, each tagged with the action it performs');
+  t.ok(dash.includes('naturalHeight === 2'), 'the page reads the probe height');
+  t.ok(dash.includes('.remove()'), 'and removes the action that does not apply');
+  // Degrade safely: if the probe never loads, BOTH actions must remain, so the
+  // operator can still change exclusion rather than facing a dead panel.
+  t.ok(!/display:\s*none/.test(dash.slice(dash.indexOf('data-own="on"') - 200, dash.indexOf('data-own="off"') + 200)),
+       'neither form is hidden up front, so a failed probe leaves both usable');
+  t.ok(dash.indexOf('data-own="on"') < dash.indexOf('naturalHeight'),
+       'the forms exist before the script that prunes them');
+
   // ---- The badge itself ---------------------------------------------------
   const { ownerBadge } = await import('../netlify/lib/admin-ui.ts');
   const excluded = ownerBadge('#7fa86a', 'EXCLUDED \u2713', 'expires 2027-09-19');
