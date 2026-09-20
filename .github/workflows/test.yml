@@ -1,0 +1,47 @@
+# Run the test suite on every pull request and every push to main.
+#
+# This is advisory, not a gate. `main` has no branch protection and the
+# repository has no rulesets, so a red check here does not prevent a merge.
+# Netlify deploys from its own git integration and runs no build command at
+# all — `netlify.toml` only sets `publish = "public"` — so a red check does not
+# prevent a deploy either. It tells you something broke; it does not stop you.
+#
+# Saying that plainly matters, because the reason this file exists is that a
+# *deleted* workflow left a permanently red last-run from 2026-06-19, which read
+# as a broken deploy pipeline for three months. Overstating what this one does
+# would be the same mistake with the sign flipped.
+#
+# The old workflow and its run are deliberately left alone. That failure is a
+# true record of something that happened.
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Nothing here writes. The suite reads files and asserts on them.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 is required, not merely preferred: several tests import
+      # netlify/lib/*.ts directly and rely on Node stripping the types without
+      # a flag, which landed in 22.18. On an older runtime they do not fail —
+      # they refuse to load, which is a worse way to find out.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # store.ts imports @netlify/blobs, so the suite genuinely needs the
+      # dependency tree installed; it is not a pure-filesystem check.
+      - run: npm ci
+
+      - run: npm test
