@@ -92,42 +92,52 @@ const SHELL = `
  * document with no manifest.
  */
 /**
- * /admin is NOT installable, and must not look like it is.
+ * Whether this page may present itself as an installable app depends entirely
+ * on which hostname served it.
  *
- * It was, briefly, and that turned out to be the bug. The public site's app
- * owns the scope `https://joeehanson.com/` -- the whole origin -- and /admin
- * sits inside it. Chrome refreshes an installed app from whatever manifest it
- * finds in that app's scope, so every visit to /admin was a fresh chance for
- * the music app's start URL to be rewritten to the dashboard. It happened
- * twice on a real phone.
+ * On admin.joeehanson.com it is the only app on the origin, so it installs
+ * normally. On joeehanson.com/admin it must not, and the reason is worth
+ * keeping: the public app claims the scope https://joeehanson.com/ -- the
+ * whole origin -- so a manifest served underneath it was repeatedly adopted by
+ * the music app, which then opened the dashboard instead of the music site. It
+ * happened twice on a real phone. Meanwhile the dashboard was never offered an
+ * install prompt of its own, because Chrome does not offer one for an inner
+ * app while the outer one is installed.
  *
- * Chrome's own guidance is that two apps nested this way on one origin are
- * "strongly not recommended": the inner one never gets an install prompt, and
- * the outer one captures its URLs. So the dashboard stops advertising itself
- * as an app here. It keeps working exactly as a page.
- *
- * Nothing replaces it at this address. The installable Measurement app moves
- * to its own origin, where no nesting is possible.
+ * Same page, same path, two different answers, decided by host.
  */
-const PWA_HEAD = `
+const INSTALLABLE_HEAD = `
+<link rel="manifest" href="/admin/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/icons/admin-180.png">
+<link rel="icon" href="/assets/icons/admin-192.png" type="image/png">
+<meta name="theme-color" content="#0f0f0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Measurement">`;
+
+const PLAIN_HEAD = `
 <link rel="icon" href="/assets/icons/admin-192.png" type="image/png">`;
 
+/** Android will not mint a separate app without a worker. It caches nothing. */
+const REGISTER_SW = `<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', function () {
+    navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin' }).catch(function () {});
+  });
+}
+</script>`;
+
 /**
- * Undo the worker this page used to register.
+ * Undo the worker the apex used to register.
  *
- * Two things this must not do, both of which would be easy and wrong:
- *
- *   It must not touch the registration at scope "/". That is the public music
- *   site's worker, which precaches the site and has nothing to do with any of
- *   this. Only registrations under /admin are removed.
- *
- *   It must not clear storage. unregister() removes a worker; it does not
- *   touch cookies, localStorage, IndexedDB or the Cache Storage its worker
- *   used. The admin worker never wrote a cache entry anyway. Calling
- *   caches.delete() here would be origin-wide and would take the music site's
- *   precache with it -- so it is not called.
+ * Two things this must not do. It must not touch the registration at scope
+ * "/" -- that is the public music site's worker, which precaches the site and
+ * has no part in this. And it must not clear storage: unregister() removes a
+ * worker without touching cookies, localStorage or Cache Storage, and Cache
+ * Storage is per-origin, so deleting from it here would take the music site's
+ * precache with it. Nobody has to clear anything.
  */
-const SW_REGISTER = `<script>
+const UNREGISTER_SW = `<script>
 if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
   addEventListener('load', function () {
     navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -140,36 +150,98 @@ if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
 }
 </script>`;
 
+const pwaHead = (adminHost: boolean) => (adminHost ? INSTALLABLE_HEAD : PLAIN_HEAD);
+const pwaScript = (adminHost: boolean) => (adminHost ? REGISTER_SW : UNREGISTER_SW);
+
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-export function renderLogin(error?: string): string {
+/**
+ * The exclusion status strip, drawn by whichever origin holds the cookie.
+ *
+ * It lives here rather than in the edge function because it is presentation,
+ * and because a claim this load-bearing should be testable without a network.
+ */
+export function ownerBadge(colour: string, label: string, note: string): string {
+  // Two tspans in one text element, so the note simply follows the label.
+  // Positioning the note by hand -- x = label.length * 8.6 -- put "expires
+  // 2027-09-19" on top of "EXCLUDED" the first time this was rendered: glyph
+  // widths are not a function of character count in a proportional serif.
+  //
+  // The tick is an XML entity rather than a literal, so the mark survives any
+  // encoding confusion between here, the HTTP layer and the img tag.
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="440" height="20" viewBox="0 0 440 20" role="img" aria-label="${escapeHtml(label)}. ${escapeHtml(note)}">
+  <text x="0" y="15" font-family="Cormorant Garamond,Georgia,serif" font-size="15">
+    <tspan fill="${escapeHtml(colour)}">${escapeHtml(label)}</tspan>
+    <tspan fill="#9a8d6e" font-size="12.5" font-style="italic" dx="11">${escapeHtml(note)}</tspan>
+  </text>
+</svg>`;
+}
+
+export function renderLogin(error?: string, adminHost = false): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
-<title>Sign in</title>${PWA_HEAD}<style>${SHELL}
+<title>Sign in</title>${pwaHead(adminHost)}<style>${SHELL}
 body{max-width:340px;padding-top:12vh}</style></head><body>
 <h1>Sign in</h1><p class="sub">joeehanson.com</p>
 ${error ? `<p class="no" style="margin-bottom:1rem">${escapeHtml(error)}</p>` : ''}
 <form method="post" action="/api/login">
   <input type="password" name="password" autocomplete="current-password" autofocus required>
   <p style="margin-top:1rem"><button type="submit">Continue</button></p>
-</form>${SW_REGISTER}</body></html>`;
+</form>${pwaScript(adminHost)}</body></html>`;
 }
 
-export function renderDashboard(owner: { excluded: boolean; expiresAt: number | null; production: boolean }): string {
-  const status = owner.excluded
-    ? `<span class="ok">EXCLUDED &#10003;</span> <span class="note">expires ${
-        owner.expiresAt ? escapeHtml(new Date(owner.expiresAt * 1000).toISOString().slice(0, 10)) : 'unknown'
-      }</span>`
-    : `<span class="no">NOT EXCLUDED</span> <span class="note">visits from this browser are being counted</span>`;
+export type DashboardView = {
+  production: boolean;
+  adminHost: boolean;
+  /** Origin that holds the owner cookie -- where the badge and the bounce go. */
+  publicOrigin: string;
+  /** Where the bounce should send the browser back to. */
+  returnTo: string;
+  badgeToken: string;
+  setToken: string;
+  nonce: string;
+};
+
+export function renderDashboard(owner: DashboardView): string {
+  const adminHost = owner.adminHost === true;
+  /**
+   * Exclusion status is drawn by the origin that holds the cookie.
+   *
+   * jh_own is host-only on joeehanson.com. Once the dashboard is served from
+   * admin.joeehanson.com it cannot read that cookie at all -- not by fetch,
+   * because that would need a credentialed cross-origin endpoint, and not by
+   * script, because the cookie is HttpOnly. An image can: the two hostnames
+   * share a registrable domain, so they are same-SITE, the Lax cookie rides
+   * along, and images need no CORS.
+   *
+   * The cost, stated plainly: the page can display this but cannot read it. So
+   * both actions are offered rather than one toggle that knows which way it
+   * should point. The badge is the only claim made about exclusion anywhere on
+   * this page -- there is no second, server-rendered copy to drift out of step
+   * with it.
+   *
+   * The nonce is per render. Combined with no-store and Vary: Cookie on the
+   * response, nothing between here and the cookie can serve one browser the
+   * answer belonging to another.
+   */
+  const badge = `${owner.publicOrigin}/api/owner-badge.svg?t=${encodeURIComponent(owner.badgeToken)}&n=${encodeURIComponent(owner.nonce)}`;
+
+  const ownForm = (exclude: boolean, label: string) => `
+    <form method="post" action="${owner.publicOrigin}/api/own">
+      <input type="hidden" name="exclude" value="${exclude ? '1' : '0'}">
+      <input type="hidden" name="t" value="${escapeHtml(owner.setToken)}">
+      <input type="hidden" name="return" value="${escapeHtml(owner.returnTo)}">
+      <button type="submit">${label}</button>
+    </form>`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
-<title>Measurement</title>${PWA_HEAD}<style>${SHELL}
+<title>Measurement</title>${pwaHead(adminHost)}<style>${SHELL}
   .ranges{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:1.5rem}
   .ranges button{padding:.4rem .9rem;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase}
   .ranges button[aria-pressed=true]{background:var(--amber);color:var(--black);border-color:var(--amber)}
@@ -198,12 +270,12 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
 <p class="sub">joeehanson.com${owner.production ? '' : ' &middot; <span class="no">PREVIEW DATA</span>'}</p>
 
 <div class="card">
-  <p><strong>This browser:</strong> ${status}</p>
+  <p><strong>This browser:</strong>
+     <img src="${badge}" width="430" height="20" alt="exclusion status"
+          style="vertical-align:middle;max-width:100%"></p>
   <div class="row" style="margin:1rem 0 0">
-    <form method="post" action="/api/own">
-      <input type="hidden" name="exclude" value="${owner.excluded ? '0' : '1'}">
-      <button type="submit">${owner.excluded ? 'Stop excluding this browser' : 'Exclude this browser'}</button>
-    </form>
+    ${ownForm(true, 'Exclude this browser')}
+    ${ownForm(false, 'Stop excluding')}
     <button type="button" id="test">Send test event</button>
     <form method="get" action="/api/logout"><button type="submit">Sign out</button></form>
   </div>
@@ -547,6 +619,6 @@ document.getElementById('test').addEventListener('click', async () => {
 });
 
 load();
-</script>${SW_REGISTER}
+</script>${pwaScript(adminHost)}
 </body></html>`;
 }

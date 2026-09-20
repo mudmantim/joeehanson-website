@@ -31,8 +31,29 @@ export const REPORT_TZ = 'America/New_York';
 
 type StoreOpts = { consistency?: 'strong' | 'eventual' };
 
-/** The one hostname whose traffic is real. */
+/** The canonical public hostname. */
 export const PRODUCTION_HOST = 'joeehanson.com';
+
+/**
+ * Every hostname whose traffic is real. Exact strings, never prefixes.
+ *
+ * The dashboard lives at admin.joeehanson.com and must read and write the same
+ * store as the site it reports on -- it is the same analytics, seen from a
+ * second door.
+ *
+ * The literal-ness matters more than it looks. Branch deploys and previews are
+ * served from names like `admin--joeehanson.netlify.app`, which share a prefix
+ * with the real host and are NOT production. A check written as
+ * `hostname.startsWith('admin')` would satisfy the feature and point every
+ * preview write at real visitor data -- the CONTEXT bug over again in a new
+ * costume, and that one also looked right while quietly merging two
+ * environments. So: exact membership, with tests that feed this function those
+ * look-alike hosts by name and require the answer to be false.
+ */
+export const PRODUCTION_HOSTS: readonly string[] = [
+  'joeehanson.com',
+  'admin.joeehanson.com',
+];
 
 /**
  * Whether this request is production traffic.
@@ -51,10 +72,54 @@ export const PRODUCTION_HOST = 'joeehanson.com';
  */
 export function isProductionRequest(req: Request): boolean {
   try {
-    return new URL(req.url).hostname === PRODUCTION_HOST;
+    return PRODUCTION_HOSTS.includes(new URL(req.url).hostname);
   } catch {
     return false;
   }
+}
+
+/** Whether this request is for the private dashboard's own hostname. */
+export function isAdminHost(req: Request): boolean {
+  try {
+    const h = new URL(req.url).hostname;
+    // One hostname. The branch-deploy hosts used to prove this out before DNS
+    // existed have been removed now that the real subdomain does.
+    //
+    // This stays a separate question from PRODUCTION_HOSTS even though the two
+    // lists now overlap. What this function gates is non-secret -- a manifest
+    // naming an icon, and a worker that stores nothing -- whereas that one
+    // decides whether a write lands in real visitor data. Answering one with
+    // the other is how a plausible `hostname.startsWith('admin')` would put
+    // test traffic into the analytics.
+    return h === 'admin.joeehanson.com';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The origin that holds the owner-exclusion cookie.
+ *
+ * `jh_own` is host-only on joeehanson.com and stays that way: the collector
+ * reads it there, and every exclusion already marked on a real device is that
+ * cookie. Nothing here re-scopes it, gives it a Domain, or re-issues it. What
+ * moves is only the place the operator presses the button, so the dashboard
+ * has to know where to send them.
+ *
+ * On the branch deploy the dashboard and the site share one hostname, so this
+ * returns that same host and the badge and bounce are same-origin. That
+ * exercises the tokens, the redirect allowlist, the cookie write and the
+ * caching headers -- everything except the cross-origin leg itself, which
+ * cannot exist until admin.joeehanson.com does.
+ */
+export function publicOriginFor(req: Request): string {
+  const h = new URL(req.url).hostname;
+  return h === 'admin.joeehanson.com' ? 'https://joeehanson.com' : `https://${h}`;
+}
+
+/** The origin the dashboard is served from, used to allowlist redirects back. */
+export function adminOriginFor(req: Request): string {
+  return `https://${new URL(req.url).hostname}`;
 }
 
 export { resolveProcessEnvironment, environmentSignals, KNOWN_CONTEXTS } from './environment.js';
