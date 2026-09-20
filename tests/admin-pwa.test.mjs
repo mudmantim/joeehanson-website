@@ -303,6 +303,20 @@ export async function ownerExclusion(t) {
        'that allowlist is a pinned literal');
   t.ok(/let back = '\/admin';/.test(code), 'anything else falls back to this host');
 
+  // ---- The badge and the collector must agree, by construction -----------
+  // If the badge says EXCLUDED, the collector must exclude. The only way to
+  // guarantee that without a live authenticated request is for both to read
+  // the same cookie through the same verification, so assert exactly that.
+  const collectSrc = readFileSync(join(root, 'netlify/edge-functions/collect.ts'), 'utf8');
+  const CHECK = "verifyToken(secret, 'own', readCookie(req, 'jh_own'))";
+  t.ok(collectSrc.includes(CHECK), 'the collector decides exclusion with this exact call');
+  t.ok(src.includes(CHECK), 'and the badge decides status with the identical call');
+  t.ok(/'x-jh': 'owner-excluded'/.test(collectSrc),
+       'the collector still announces exclusion in a header we can verify from outside');
+  // Neither may drift onto a different cookie name.
+  t.equal((collectSrc.match(/jh_own/g) ?? []).length, 1, 'the collector reads one cookie name');
+  t.ok(!/jh_own[a-z_]/.test(collectSrc + src), 'and no variant name exists anywhere');
+
   // ---- The badge itself ---------------------------------------------------
   const { ownerBadge } = await import('../netlify/lib/admin-ui.ts');
   const excluded = ownerBadge('#7fa86a', 'EXCLUDED \u2713', 'expires 2027-09-19');
