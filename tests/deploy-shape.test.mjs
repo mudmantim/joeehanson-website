@@ -98,8 +98,14 @@ export function environmentIsolation(t) {
   // that would be checking the explanation rather than the code.
   const code = store.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
-  t.ok(/hostname === PRODUCTION_HOST/.test(code),
-       'production is determined by hostname');
+  // Was `hostname === PRODUCTION_HOST` when there was one production host.
+  // There are two now -- the site and the dashboard's subdomain -- so the check
+  // is exact membership of a fixed list. tests/host-routing.test.mjs calls the
+  // function with real hostnames, including the look-alike branch deploy.
+  t.ok(/PRODUCTION_HOSTS\.includes\(new URL\(req\.url\)\.hostname\)/.test(code),
+       'production is determined by exact hostname membership');
+  t.ok(!/hostname\.startsWith|hostname\.includes|hostname\.endsWith/.test(code),
+       'and never by a prefix or substring match');
   t.ok(!/Netlify\.env\.get\(['"]CONTEXT['"]\)/.test(code),
        'store.ts does not rely on CONTEXT in the edge runtime');
   t.ok(/PRODUCTION_HOST = 'joeehanson\.com'/.test(code),

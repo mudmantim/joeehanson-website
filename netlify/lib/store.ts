@@ -31,8 +31,29 @@ export const REPORT_TZ = 'America/New_York';
 
 type StoreOpts = { consistency?: 'strong' | 'eventual' };
 
-/** The one hostname whose traffic is real. */
+/** The canonical public hostname. */
 export const PRODUCTION_HOST = 'joeehanson.com';
+
+/**
+ * Every hostname whose traffic is real. Exact strings, never prefixes.
+ *
+ * The dashboard is moving to admin.joeehanson.com, which must read and write
+ * the same store as the site it reports on -- it is the same analytics, seen
+ * from a second door.
+ *
+ * The literal-ness matters more than it looks. The branch deploy that this
+ * migration is tested on is served from `admin--joeehanson.netlify.app`, which
+ * shares a prefix with the real host and is NOT production. Any check written
+ * as `hostname.startsWith('admin')` would point every test write at the real
+ * store, which is the CONTEXT bug over again in a new costume: that one also
+ * looked right and quietly merged two environments. So: exact membership, and
+ * a test below that feeds this function the branch-deploy host by name and
+ * requires the answer to be false.
+ */
+export const PRODUCTION_HOSTS: readonly string[] = [
+  'joeehanson.com',
+  'admin.joeehanson.com',
+];
 
 /**
  * Whether this request is production traffic.
@@ -51,7 +72,22 @@ export const PRODUCTION_HOST = 'joeehanson.com';
  */
 export function isProductionRequest(req: Request): boolean {
   try {
-    return new URL(req.url).hostname === PRODUCTION_HOST;
+    return PRODUCTION_HOSTS.includes(new URL(req.url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Whether this request is for the private dashboard's own hostname. */
+export function isAdminHost(req: Request): boolean {
+  try {
+    const h = new URL(req.url).hostname;
+    // The production subdomain, or the branch deploy it is tested on. The
+    // second is deliberately a different string from the first so that
+    // recognising the admin surface can never be confused with deciding which
+    // store to write to -- those are separate questions and this file answers
+    // them separately.
+    return h === 'admin.joeehanson.com' || h === 'admin--joeehanson.netlify.app';
   } catch {
     return false;
   }

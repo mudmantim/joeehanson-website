@@ -42,11 +42,11 @@ const swSrc = read('public/sw.js');
 const uiCode = uiSrc.replace(/\/\*[\s\S]*?\*\//g, '');
 
 export default function run(t) {
-  // ---- The apex dashboard advertises no app ------------------------------
-  t.ok(!/rel="manifest"/.test(uiSrc), '/admin links no web app manifest');
-  t.ok(!/serviceWorker\.register\(/.test(uiSrc), '/admin registers no service worker');
-  t.ok(!/apple-mobile-web-app-capable/.test(uiSrc),
-       '/admin does not ask iOS to treat it as standalone either');
+  // Whether the page advertises an app now depends on the hostname, so the
+  // real assertions live in renderedOutput() below, which builds both pages
+  // for both hosts. Here we only check the decision exists and is made once.
+  t.ok(/const pwaHead = \(adminHost/.test(uiSrc), 'the head is chosen by host');
+  t.ok(/const pwaScript = \(adminHost/.test(uiSrc), 'the worker script is chosen by host');
 
   // ---- Both shell routes are gone, and gone in the way that works --------
   const shellRoute = adminSrc.indexOf("path === '/admin/manifest.webmanifest'");
@@ -59,7 +59,12 @@ export default function run(t) {
   // through to the gate would answer 401 and every stale registration would
   // survive.
   t.ok(shellRoute < gate, 'they answer before the session gate, so they cannot become 401s');
-  t.ok(!/ADMIN_MANIFEST|ADMIN_SW/.test(adminSrc), 'the apex function serves neither constant');
+  t.ok(/if \(!adminHost\) \{/.test(adminSrc), 'the 404 is conditional on the hostname');
+  t.ok(/const adminHost = isAdminHost\(req\);/.test(adminSrc),
+       'the host decision comes from store.ts, where it is tested by name');
+  const hostDecision = adminSrc.indexOf('const adminHost = isAdminHost(req)');
+  t.ok(hostDecision > 0 && hostDecision < shellRoute,
+       'the host is decided before the shell routes use it');
 
   // ---- The removal must not take anything else with it -------------------
   t.ok(/getRegistrations\(\)/.test(uiSrc), '/admin cleans up the worker it used to register');
@@ -134,29 +139,82 @@ export function sessionExpiry(t) {
 export async function renderedOutput(t) {
   const { renderDashboard, renderLogin } = await import('../netlify/lib/admin-ui.ts');
 
-  const pages = {
-    'sign-in': renderLogin('Incorrect.'),
-    dashboard: renderDashboard({ excluded: true, expiresAt: 1789000000, production: true }),
-  };
+  const build = (adminHost) => ({
+    'sign-in': renderLogin('Incorrect.', adminHost),
+    dashboard: renderDashboard({ excluded: true, expiresAt: 1789000000, production: true, adminHost }),
+  });
 
-  for (const [name, out] of Object.entries(pages)) {
-    t.ok(out.startsWith('<!doctype html>'), `${name} is a whole document`);
-    t.ok(out.trimEnd().endsWith('</html>'), `${name} is not truncated`);
-    t.ok(!out.includes('`'), `${name} contains no stray backtick`);
-    t.ok(!out.includes('${'), `${name} left nothing uninterpolated`);
-    t.equal((out.match(/<script/g) ?? []).length, (out.match(/<\/script>/g) ?? []).length,
-            `${name} balances its script tags`);
+  for (const [hostLabel, adminHost] of [['apex joeehanson.com', false], ['admin.joeehanson.com', true]]) {
+    for (const [name, out] of Object.entries(build(adminHost))) {
+      const where = `${name} @ ${hostLabel}`;
 
-    // The point of this change, asserted against the bytes a browser receives.
-    t.ok(!out.includes('rel="manifest"'), `${name} serves no manifest link`);
-    t.ok(!out.includes('serviceWorker.register'), `${name} registers no worker`);
-    t.ok(out.includes('getRegistrations'), `${name} cleans up the old worker`);
-    t.ok(out.includes('noindex'), `${name} still asks not to be indexed`);
+      t.ok(out.startsWith('<!doctype html>'), `${where} is a whole document`);
+      t.ok(out.trimEnd().endsWith('</html>'), `${where} is not truncated`);
+      t.ok(!out.includes('`'), `${where} contains no stray backtick`);
+      t.ok(!out.includes('${'), `${where} left nothing uninterpolated`);
+      t.equal((out.match(/<script/g) ?? []).length, (out.match(/<\/script>/g) ?? []).length,
+              `${where} balances its script tags`);
+      t.ok(out.includes('noindex'), `${where} still asks not to be indexed`);
 
-    for (const [i, js] of [...out.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).entries()) {
-      let ok = true;
-      try { new Function(js); } catch { ok = false; }
-      t.ok(ok, `${name} script #${i + 1} compiles`);
+      if (adminHost) {
+        // Its own origin, no outer app, so it may install.
+        t.ok(out.includes('<link rel="manifest" href="/admin/manifest.webmanifest">'),
+             `${where} links the manifest`);
+        t.ok(out.includes("navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin' })"),
+             `${where} registers the worker at the widened scope`);
+        t.ok(!out.includes('getRegistrations'), `${where} does not also unregister it`);
+      } else {
+        // Inside the public app's scope. Advertising an app here is what kept
+        // rewriting the music app's start URL.
+        t.ok(!out.includes('rel="manifest"'), `${where} links NO manifest`);
+        t.ok(!out.includes('serviceWorker.register'), `${where} registers NO worker`);
+        t.ok(!out.includes('apple-mobile-web-app-capable'), `${where} asks iOS for nothing either`);
+        t.ok(out.includes('getRegistrations'), `${where} cleans up the old worker`);
+        t.ok(out.includes("scope === '/admin' || scope.indexOf('/admin/') === 0"),
+             `${where} unregisters ONLY /admin-scoped workers`);
+      }
+
+      for (const [i, js] of [...out.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).entries()) {
+        let ok = true;
+        try { new Function(js); } catch { ok = false; }
+        t.ok(ok, `${where} script #${i + 1} compiles`);
+      }
     }
   }
+
+  // The two hosts must actually differ, or the branch is dead code.
+  const apex = build(false).dashboard, admin = build(true).dashboard;
+  t.ok(apex !== admin, 'the two hosts render different documents');
+}
+
+/**
+ * The installable identity, on the origin it will actually be served from.
+ */
+export async function appIdentity(t) {
+  const { ADMIN_MANIFEST, ADMIN_SW } = await import('../netlify/lib/admin-pwa.ts');
+  const m = JSON.parse(ADMIN_MANIFEST);
+  const pub = JSON.parse(readFileSync(join(root, 'public/manifest.json'), 'utf8'));
+
+  // Relative, so the same bytes describe the real subdomain and the branch
+  // deploy it is tested on, instead of claiming a cross-origin id on either.
+  for (const f of ['id', 'start_url', 'scope']) {
+    t.ok(!/^https?:/.test(m[f]), `manifest ${f} is relative`);
+  }
+
+  // The identity that decides "one app or two" is the id resolved against the
+  // origin that served it. On the subdomain these can no longer collide,
+  // whatever the paths are.
+  const onAdmin = new URL(m.id, 'https://admin.joeehanson.com');
+  const onApex = new URL(pub.id, 'https://joeehanson.com');
+  t.equal(onAdmin.href, 'https://admin.joeehanson.com/admin', 'the app identifies on its own origin');
+  t.equal(onApex.href, 'https://joeehanson.com/', 'the public app is unchanged');
+  t.ok(onAdmin.origin !== onApex.origin, 'different origins: nesting is impossible');
+  t.ok(m.name !== pub.name, 'and they have different names');
+
+  // The worker still stores nothing.
+  const code = ADMIN_SW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  t.ok(!/\bcaches\b/.test(code), 'the admin worker never reaches Cache Storage');
+  t.ok(!/localStorage|sessionStorage|indexedDB/.test(code), 'nor any other persistent storage');
+  let ok = true; try { new Function(ADMIN_SW); } catch { ok = false; }
+  t.ok(ok, 'the worker compiles');
 }

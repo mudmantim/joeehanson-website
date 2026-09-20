@@ -20,7 +20,8 @@ import {
   timingSafeEqual,
   verifyToken,
 } from '../lib/crypto.ts';
-import { analyticsStore, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
+import { analyticsStore, isAdminHost, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
+import { ADMIN_MANIFEST, ADMIN_SW } from '../lib/admin-pwa.ts';
 import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange, ROLLUP_VERSION } from '../lib/rollup.js';
 import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
 
@@ -87,26 +88,49 @@ export default async (req: Request, context: Context): Promise<Response> => {
     return html('<!doctype html><meta charset=utf-8><title>Not configured</title><p>Analytics is not configured.', 503);
   }
 
-  // ---- The app shell that used to live here -------------------------------
-  // Gone deliberately, and answered with 404 rather than simply removed.
+  // ---- The app shell, on the dashboard's own hostname only ----------------
+  // Installable at admin.joeehanson.com; a 404 at joeehanson.com/admin.
   //
-  // A 404 on a worker script is what makes a browser drop a registration it
-  // already has; a 401 -- which is what these paths would return if they fell
-  // through to the gate below -- would leave every already-registered worker in
-  // place. Between this and the unregistration script in admin-ui.ts, a browser
-  // that installed the old shell lets go of it without anyone clearing
-  // anything.
+  // That asymmetry is the whole fix. Two apps cannot be nested on one origin:
+  // the public app's scope is https://joeehanson.com/ -- the entire origin --
+  // so a manifest served under it kept being adopted by the music app, while
+  // the dashboard was never offered an install prompt of its own. On a
+  // separate origin there is no outer app, so nothing to nest inside.
   //
-  // Why it is gone at all: /admin sits inside the public app's scope, so the
-  // manifest served here kept being adopted by the music app and rewriting its
-  // start URL. The installable dashboard moves to its own origin instead.
+  // The path stays /admin. Once the origin differs the path is irrelevant to
+  // app identity, and keeping it means every redirect, form action and
+  // bookmark in this file works unchanged on either hostname.
+  const adminHost = isAdminHost(req);
+
   if (path === '/admin/manifest.webmanifest' || path === '/admin/sw.js') {
-    return new Response('Not here.', {
-      status: 404,
+    if (!adminHost) {
+      // A 404 rather than a removal: a 404 on a worker script is what makes a
+      // browser drop a registration it already has. Falling through to the
+      // session gate would answer 401 and leave stale registrations in place.
+      return new Response('Not here.', {
+        status: 404,
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-robots-tag': 'noindex, nofollow, noarchive',
+        },
+      });
+    }
+
+    // Served before the session gate because Google's WebAPK service fetches
+    // both itself, without cookies, when Android mints the app. Neither holds
+    // anything private: the manifest is a name and an icon path, the worker is
+    // a constant that stores nothing.
+    const [body, type, extra] = path === '/admin/manifest.webmanifest'
+      ? [ADMIN_MANIFEST, 'application/manifest+json; charset=utf-8', {}]
+      : [ADMIN_SW, 'text/javascript; charset=utf-8', { 'service-worker-allowed': '/admin' }];
+
+    return new Response(body, {
       headers: {
-        'content-type': 'text/plain; charset=utf-8',
-        'cache-control': 'no-store',
+        'content-type': type,
+        'cache-control': 'no-cache',
         'x-robots-tag': 'noindex, nofollow, noarchive',
+        ...extra,
       },
     });
   }
@@ -118,7 +142,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
   if (path === '/api/login' && req.method === 'POST') {
     const throttle = await loginThrottle(production, ipHash);
     if (throttle.blocked) {
-      return html(renderLogin('Too many attempts. Wait 15 minutes.'), 429);
+      return html(renderLogin('Too many attempts. Wait 15 minutes.', adminHost), 429);
     }
 
     const form = await req.formData();
@@ -129,7 +153,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
       await throttle.record();
       // One generic message: never distinguishes a wrong password from
       // anything else about this path.
-      return html(renderLogin('Incorrect.'), 401);
+      return html(renderLogin('Incorrect.', adminHost), 401);
     }
 
     const token = await issueToken(secret, 'adm', SESSION_TTL);
@@ -142,7 +166,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
   // ---- Everything below requires a session --------------------------------
   if (!session.valid) {
     if (path.startsWith('/api/')) return json({ error: 'unauthorized' }, 401);
-    return html(renderLogin(), 401);
+    return html(renderLogin(undefined, adminHost), 401);
   }
 
   if (path === '/api/logout') {
@@ -387,7 +411,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
   }
 
   // ---- Dashboard ----------------------------------------------------------
-  return html(renderDashboard({ excluded: owner.valid, expiresAt: owner.expiresAt ?? null, production }));
+  return html(renderDashboard({ excluded: owner.valid, expiresAt: owner.expiresAt ?? null, production, adminHost }));
 };
 
 export const config: Config = {
