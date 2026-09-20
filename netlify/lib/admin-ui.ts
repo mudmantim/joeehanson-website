@@ -156,6 +156,28 @@ const pwaScript = (adminHost: boolean) => (adminHost ? REGISTER_SW : UNREGISTER_
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+/**
+ * The exclusion status strip, drawn by whichever origin holds the cookie.
+ *
+ * It lives here rather than in the edge function because it is presentation,
+ * and because a claim this load-bearing should be testable without a network.
+ */
+export function ownerBadge(colour: string, label: string, note: string): string {
+  // Two tspans in one text element, so the note simply follows the label.
+  // Positioning the note by hand -- x = label.length * 8.6 -- put "expires
+  // 2027-09-19" on top of "EXCLUDED" the first time this was rendered: glyph
+  // widths are not a function of character count in a proportional serif.
+  //
+  // The tick is an XML entity rather than a literal, so the mark survives any
+  // encoding confusion between here, the HTTP layer and the img tag.
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="440" height="20" viewBox="0 0 440 20" role="img" aria-label="${escapeHtml(label)}. ${escapeHtml(note)}">
+  <text x="0" y="15" font-family="Cormorant Garamond,Georgia,serif" font-size="15">
+    <tspan fill="${escapeHtml(colour)}">${escapeHtml(label)}</tspan>
+    <tspan fill="#9a8d6e" font-size="12.5" font-style="italic" dx="11">${escapeHtml(note)}</tspan>
+  </text>
+</svg>`;
+}
+
 export function renderLogin(error?: string, adminHost = false): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -171,13 +193,49 @@ ${error ? `<p class="no" style="margin-bottom:1rem">${escapeHtml(error)}</p>` : 
 </form>${pwaScript(adminHost)}</body></html>`;
 }
 
-export function renderDashboard(owner: { excluded: boolean; expiresAt: number | null; production: boolean; adminHost?: boolean }): string {
+export type DashboardView = {
+  production: boolean;
+  adminHost: boolean;
+  /** Origin that holds the owner cookie -- where the badge and the bounce go. */
+  publicOrigin: string;
+  /** Where the bounce should send the browser back to. */
+  returnTo: string;
+  badgeToken: string;
+  setToken: string;
+  nonce: string;
+};
+
+export function renderDashboard(owner: DashboardView): string {
   const adminHost = owner.adminHost === true;
-  const status = owner.excluded
-    ? `<span class="ok">EXCLUDED &#10003;</span> <span class="note">expires ${
-        owner.expiresAt ? escapeHtml(new Date(owner.expiresAt * 1000).toISOString().slice(0, 10)) : 'unknown'
-      }</span>`
-    : `<span class="no">NOT EXCLUDED</span> <span class="note">visits from this browser are being counted</span>`;
+  /**
+   * Exclusion status is drawn by the origin that holds the cookie.
+   *
+   * jh_own is host-only on joeehanson.com. Once the dashboard is served from
+   * admin.joeehanson.com it cannot read that cookie at all -- not by fetch,
+   * because that would need a credentialed cross-origin endpoint, and not by
+   * script, because the cookie is HttpOnly. An image can: the two hostnames
+   * share a registrable domain, so they are same-SITE, the Lax cookie rides
+   * along, and images need no CORS.
+   *
+   * The cost, stated plainly: the page can display this but cannot read it. So
+   * both actions are offered rather than one toggle that knows which way it
+   * should point. The badge is the only claim made about exclusion anywhere on
+   * this page -- there is no second, server-rendered copy to drift out of step
+   * with it.
+   *
+   * The nonce is per render. Combined with no-store and Vary: Cookie on the
+   * response, nothing between here and the cookie can serve one browser the
+   * answer belonging to another.
+   */
+  const badge = `${owner.publicOrigin}/api/owner-badge.svg?t=${encodeURIComponent(owner.badgeToken)}&n=${encodeURIComponent(owner.nonce)}`;
+
+  const ownForm = (exclude: boolean, label: string) => `
+    <form method="post" action="${owner.publicOrigin}/api/own">
+      <input type="hidden" name="exclude" value="${exclude ? '1' : '0'}">
+      <input type="hidden" name="t" value="${escapeHtml(owner.setToken)}">
+      <input type="hidden" name="return" value="${escapeHtml(owner.returnTo)}">
+      <button type="submit">${label}</button>
+    </form>`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -212,12 +270,12 @@ export function renderDashboard(owner: { excluded: boolean; expiresAt: number | 
 <p class="sub">joeehanson.com${owner.production ? '' : ' &middot; <span class="no">PREVIEW DATA</span>'}</p>
 
 <div class="card">
-  <p><strong>This browser:</strong> ${status}</p>
+  <p><strong>This browser:</strong>
+     <img src="${badge}" width="430" height="20" alt="exclusion status"
+          style="vertical-align:middle;max-width:100%"></p>
   <div class="row" style="margin:1rem 0 0">
-    <form method="post" action="/api/own">
-      <input type="hidden" name="exclude" value="${owner.excluded ? '0' : '1'}">
-      <button type="submit">${owner.excluded ? 'Stop excluding this browser' : 'Exclude this browser'}</button>
-    </form>
+    ${ownForm(true, 'Exclude this browser')}
+    ${ownForm(false, 'Stop excluding')}
     <button type="button" id="test">Send test event</button>
     <form method="get" action="/api/logout"><button type="submit">Sign out</button></form>
   </div>

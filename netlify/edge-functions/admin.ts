@@ -20,12 +20,16 @@ import {
   timingSafeEqual,
   verifyToken,
 } from '../lib/crypto.ts';
-import { analyticsStore, isAdminHost, isProductionRequest, keys, reportDay, storeNameFor } from '../lib/store.ts';
+import { adminOriginFor, analyticsStore, isAdminHost, isProductionRequest, keys, publicOriginFor, reportDay, storeNameFor } from '../lib/store.ts';
 import { ADMIN_MANIFEST, ADMIN_SW } from '../lib/admin-pwa.ts';
 import { aggregateDay, chooseSource, combineDays, enumerateDays, resolveRange, ROLLUP_VERSION } from '../lib/rollup.js';
-import { renderDashboard, renderLogin } from '../lib/admin-ui.ts';
+import { ownerBadge, renderDashboard, renderLogin } from '../lib/admin-ui.ts';
 
 const SESSION_TTL = 7 * 24 * 60 * 60; // 7 days
+/** The one off-host origin a redirect may return to. */
+const ADMIN_ORIGIN = 'https://admin.joeehanson.com';
+/** Long enough for a slow page load, short enough that a leaked one is stale. */
+const BOUNCE_TTL = 10 * 60;
 const OWNER_TTL = 365 * 24 * 60 * 60; // 1 year
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
@@ -74,6 +78,8 @@ async function countPrefix(production: boolean, prefix: string): Promise<number>
   const { blobs } = await analyticsStore(production, { consistency: 'strong' }).list({ prefix });
   return blobs.length;
 }
+
+
 
 export default async (req: Request, context: Context): Promise<Response> => {
   const url = new URL(req.url);
@@ -163,6 +169,78 @@ export default async (req: Request, context: Context): Promise<Response> => {
     });
   }
 
+  // ---- Owner exclusion, reachable from the dashboard's own hostname -------
+  //
+  // jh_own is host-only on joeehanson.com and stays exactly that: same name,
+  // same signature, no Domain attribute, nothing re-issued. The collector goes
+  // on reading it there. Only the controls move.
+  //
+  // The dashboard's session cookie cannot reach this hostname, so a signed-in
+  // dashboard mints a short-lived token instead. Same JH_SECRET, unchanged.
+  // Both routes sit above the session gate because neither can present one.
+
+  if (path === '/api/owner-badge.svg') {
+    // Status, rendered where the cookie actually lives. An image needs no CORS
+    // and no credentialed fetch; admin.joeehanson.com and joeehanson.com share
+    // a registrable domain, so they are same-SITE and the Lax cookie is sent.
+    if (!(await verifyToken(secret, 'own-badge', url.searchParams.get('t') ?? '')).valid) {
+      return new Response('', { status: 403, headers: { 'cache-control': 'no-store' } });
+    }
+    const who = await verifyToken(secret, 'own', readCookie(req, 'jh_own'));
+    const until = who.valid && who.expiresAt
+      ? new Date(who.expiresAt * 1000).toISOString().slice(0, 10)
+      : '';
+    const svg = who.valid
+      ? ownerBadge('#7fa86a', 'EXCLUDED \u2713', `expires ${until}`)
+      : ownerBadge('#c87941', 'NOT EXCLUDED', 'visits from this browser are being counted');
+
+    return new Response(svg, {
+      headers: {
+        'content-type': 'image/svg+xml; charset=utf-8',
+        // This response depends on one browser's cookie. If any cache -- the
+        // browser's, Netlify's edge, anything between -- were allowed to keep
+        // it, one person could be shown another's exclusion status. Belt and
+        // braces: no-store, private, and Vary on Cookie. The page also puts a
+        // fresh nonce in the URL on every render.
+        'cache-control': 'no-store, no-cache, must-revalidate, private, max-age=0',
+        'pragma': 'no-cache',
+        'vary': 'Cookie',
+        'x-robots-tag': 'noindex, nofollow, noarchive',
+      },
+    });
+  }
+
+  if (path === '/api/own' && req.method === 'POST') {
+    const form = await req.formData();
+    const supplied = String(form.get('t') ?? '');
+    // Either a session on this host (the apex dashboard, during the
+    // transition) or a token from the signed-in dashboard on the subdomain.
+    const viaToken = supplied
+      ? (await verifyToken(secret, 'own-set', supplied)).valid
+      : false;
+    if (!session.valid && !viaToken) {
+      return json({ error: 'unauthorized' }, 401);
+    }
+
+    const on = String(form.get('exclude') ?? '') === '1';
+    const cookie = on
+      ? setCookie('jh_own', await issueToken(secret, 'own', OWNER_TTL), OWNER_TTL)
+      : setCookie('jh_own', '', 0);
+
+    // Never redirect anywhere but back to a dashboard we recognise. Without
+    // this the endpoint is an open redirect that arrives with a signed token
+    // attached, which is a far more convincing lure than a bare one.
+    let back = '/admin';
+    try {
+      const u = new URL(String(form.get('return') ?? ''));
+      if (u.origin === ADMIN_ORIGIN || u.origin === adminOriginFor(req)) back = u.href;
+    } catch {
+      // Not an absolute URL. Stay on this host.
+    }
+
+    return new Response(null, { status: 303, headers: { location: back, 'set-cookie': cookie } });
+  }
+
   // ---- Everything below requires a session --------------------------------
   if (!session.valid) {
     if (path.startsWith('/api/')) return json({ error: 'unauthorized' }, 401);
@@ -187,15 +265,6 @@ export default async (req: Request, context: Context): Promise<Response> => {
   }
 
   // ---- Mark / unmark this browser ----------------------------------------
-  if (path === '/api/own' && req.method === 'POST') {
-    const form = await req.formData();
-    const on = String(form.get('exclude') ?? '') === '1';
-    const cookie = on
-      ? setCookie('jh_own', await issueToken(secret, 'own', OWNER_TTL), OWNER_TTL)
-      : setCookie('jh_own', '', 0);
-    return new Response(null, { status: 303, headers: { location: '/admin', 'set-cookie': cookie } });
-  }
-
   // ---- Test event ---------------------------------------------------------
   // Reports how THIS request would be treated by the collector, using the same
   // cookie the collector would see. This is the verification affordance: it
@@ -411,10 +480,22 @@ export default async (req: Request, context: Context): Promise<Response> => {
   }
 
   // ---- Dashboard ----------------------------------------------------------
-  return html(renderDashboard({ excluded: owner.valid, expiresAt: owner.expiresAt ?? null, production, adminHost }));
+  // Status is no longer rendered from the cookie here: on the dashboard's own
+  // hostname that cookie is unreachable, and two sources of truth that can
+  // disagree is worse than one that cannot. The badge is the only claim.
+  const publicOrigin = publicOriginFor(req);
+  return html(renderDashboard({
+    production,
+    adminHost,
+    publicOrigin,
+    returnTo: `${adminOriginFor(req)}/admin`,
+    badgeToken: await issueToken(secret, 'own-badge', BOUNCE_TTL),
+    setToken: await issueToken(secret, 'own-set', BOUNCE_TTL),
+    nonce: crypto.randomUUID(),
+  }));
 };
 
 export const config: Config = {
-  path: ['/admin', '/admin/*', '/api/login', '/api/logout', '/api/whoami', '/api/own', '/api/stats', '/api/test-event', '/api/maintenance'],
+  path: ['/admin', '/admin/*', '/api/login', '/api/logout', '/api/owner-badge.svg', '/api/whoami', '/api/own', '/api/stats', '/api/test-event', '/api/maintenance'],
   onError: 'fail',
 };

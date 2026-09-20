@@ -139,9 +139,18 @@ export function sessionExpiry(t) {
 export async function renderedOutput(t) {
   const { renderDashboard, renderLogin } = await import('../netlify/lib/admin-ui.ts');
 
+  const view = (adminHost) => ({
+    production: true,
+    adminHost,
+    publicOrigin: adminHost ? 'https://joeehanson.com' : 'https://joeehanson.com',
+    returnTo: adminHost ? 'https://admin.joeehanson.com/admin' : 'https://joeehanson.com/admin',
+    badgeToken: 'badge.token.value',
+    setToken: 'set.token.value',
+    nonce: 'nonce-0001',
+  });
   const build = (adminHost) => ({
     'sign-in': renderLogin('Incorrect.', adminHost),
-    dashboard: renderDashboard({ excluded: true, expiresAt: 1789000000, production: true, adminHost }),
+    dashboard: renderDashboard(view(adminHost)),
   });
 
   for (const [hostLabel, adminHost] of [['apex joeehanson.com', false], ['admin.joeehanson.com', true]]) {
@@ -217,4 +226,116 @@ export async function appIdentity(t) {
   t.ok(!/localStorage|sessionStorage|indexedDB/.test(code), 'nor any other persistent storage');
   let ok = true; try { new Function(ADMIN_SW); } catch { ok = false; }
   t.ok(ok, 'the worker compiles');
+}
+
+/**
+ * Owner exclusion, once the dashboard lives on another origin.
+ *
+ * jh_own is host-only on joeehanson.com and must stay exactly that. The
+ * dashboard cannot read it -- HttpOnly rules out script, and a credentialed
+ * cross-origin fetch was ruled out deliberately. So the origin that holds the
+ * cookie draws the status itself and the page displays the result.
+ *
+ * The obvious way for that to go wrong is caching: a status image that depends
+ * on one browser's cookie, held by any cache in between, shows one person
+ * another person's exclusion state.
+ */
+export async function ownerExclusion(t) {
+  const { renderDashboard } = await import('../netlify/lib/admin-ui.ts');
+  const src = adminSrc;
+
+  // ---- The cookie is untouched -------------------------------------------
+  // Strip block comments, then line comments -- but NOT the "//" inside a URL
+  // literal, which is how the previous version of this test quietly decided
+  // that `const ADMIN_ORIGIN = 'https://admin.joeehanson.com'` was absent.
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  t.ok(/setCookie\('jh_own', await issueToken\(secret, 'own', OWNER_TTL\), OWNER_TTL\)/.test(code),
+       'the owner cookie is still issued exactly as before');
+  t.ok(!/Domain=/.test(code), 'no Domain attribute is introduced anywhere');
+  t.ok(!/jh_own_/.test(code), 'no second, readable mirror cookie exists');
+  t.ok(!/Access-Control-Allow-Credentials/i.test(code), 'no credentialed CORS endpoint was added');
+  t.ok(!/Access-Control-Allow-Origin/i.test(code), 'no CORS headers at all');
+
+  // ---- The badge cannot be cached into showing someone else's status -----
+  // Slice from the SVG response, not from the route: the token-rejection
+  // branch above it also ends in "});" and an earlier version of this test
+  // measured that instead, reading the 403's headers and passing anyway.
+  const badge = code.slice(code.indexOf("path === '/api/owner-badge.svg'"));
+  const headers = badge.slice(badge.indexOf('return new Response(svg'),
+                              badge.indexOf('return new Response(svg') + 900);
+  t.ok(/'cache-control': 'no-store, no-cache, must-revalidate, private, max-age=0'/.test(headers),
+       'the badge is no-store and private');
+  t.ok(/'vary': 'Cookie'/.test(headers), 'and varies on Cookie');
+  t.ok(/'content-type': 'image\/svg\+xml/.test(headers), 'and is served as an image');
+
+  // A fresh nonce per render, so even a cache that ignored the headers could
+  // not key-collide two browsers onto one entry.
+  const a = renderDashboard({ production: true, adminHost: true, publicOrigin: 'https://joeehanson.com',
+    returnTo: 'https://admin.joeehanson.com/admin', badgeToken: 'b', setToken: 's', nonce: 'n1' });
+  const b = renderDashboard({ production: true, adminHost: true, publicOrigin: 'https://joeehanson.com',
+    returnTo: 'https://admin.joeehanson.com/admin', badgeToken: 'b', setToken: 's', nonce: 'n2' });
+  t.ok(a.includes('n=n1') && b.includes('n=n2'), 'the badge URL carries a per-render nonce');
+  t.ok(a !== b, 'two renders produce two badge URLs');
+  t.ok(/nonce: crypto\.randomUUID\(\)/.test(src), 'and that nonce is random per request');
+
+  // The public worker must never precache it either.
+  const pubCode = swSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  t.ok(/startsWith\('\/api\/'\)/.test(pubCode), 'the public worker still bypasses /api/, badge included');
+
+  // ---- Authorisation ------------------------------------------------------
+  t.ok(/verifyToken\(secret, 'own-badge'/.test(code), 'the badge requires a signed token');
+  t.ok(/verifyToken\(secret, 'own-set'/.test(code), 'setting exclusion requires a signed token');
+  t.ok(/'own-badge'/.test(code) && /'own-set'/.test(code) && /'own'/.test(code),
+       'badge, set and cookie tokens have three distinct purposes');
+  t.ok(/if \(!session\.valid && !viaToken\)/.test(code),
+       'the bounce accepts a session OR a token, never neither');
+
+  const badgeRoute = code.indexOf("path === '/api/owner-badge.svg'");
+  const ownRoute = code.indexOf("path === '/api/own'");
+  const gate = code.indexOf('if (!session.valid)');
+  t.ok(badgeRoute > 0 && badgeRoute < gate, 'the badge answers before the session gate');
+  t.ok(ownRoute > 0 && ownRoute < gate, 'the bounce answers before the session gate');
+
+  // ---- The bounce is not an open redirect --------------------------------
+  t.ok(/u\.origin === ADMIN_ORIGIN \|\| u\.origin === adminOriginFor\(req\)/.test(code),
+       'the return URL is checked against an origin allowlist');
+  t.ok(/const ADMIN_ORIGIN = 'https:\/\/admin\.joeehanson\.com'/.test(code),
+       'that allowlist is a pinned literal');
+  t.ok(/let back = '\/admin';/.test(code), 'anything else falls back to this host');
+
+  // ---- The badge itself ---------------------------------------------------
+  const { ownerBadge } = await import('../netlify/lib/admin-ui.ts');
+  const excluded = ownerBadge('#7fa86a', 'EXCLUDED \u2713', 'expires 2027-09-19');
+  const counted = ownerBadge('#c87941', 'NOT EXCLUDED', 'visits from this browser are being counted');
+
+  for (const [n, svg] of [['excluded', excluded], ['not excluded', counted]]) {
+    t.ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), `${n} badge is an SVG document`);
+    t.ok(svg.trimEnd().endsWith('</svg>'), `${n} badge is closed`);
+    t.ok(/role="img" aria-label="/.test(svg), `${n} badge is labelled for screen readers`);
+    t.ok(!/<script|href=|xlink:|<image/.test(svg), `${n} badge references nothing external`);
+  }
+  t.ok(excluded.includes('expires 2027-09-19'), 'the excluded badge states the expiry');
+  t.ok(counted.includes('being counted'), 'the other says visits are being counted');
+  t.ok(excluded !== counted, 'the two states render differently');
+
+  // The label and the note must flow, not be positioned by arithmetic. Placing
+  // the note at x = label.length * 8.6 printed "expires 2027-09-19" on top of
+  // "EXCLUDED": glyph widths are not a function of character count in a
+  // proportional serif.
+  t.ok(/<tspan[^>]*>[\s\S]*<tspan[^>]*dx=/.test(excluded),
+       'the note follows the label with dx, not a computed x');
+  t.ok(!/x="\$\{[^}]*length/.test(readFileSync(join(root, 'netlify/lib/admin-ui.ts'), 'utf8')),
+       'no text position is derived from string length');
+
+  // Escaping, since the expiry is interpolated.
+  const nasty = ownerBadge('#000', 'A<B&C', '"><script>alert(1)</script>');
+  t.ok(!nasty.includes('<script>'), 'badge content is escaped');
+  t.ok(nasty.includes('&lt;') && nasty.includes('&amp;'), 'and escaped as XML entities');
+
+  // ---- One claim about exclusion, not two --------------------------------
+  t.ok(!/This browser:<\/strong> \$\{status\}/.test(readFileSync(join(root, 'netlify/lib/admin-ui.ts'), 'utf8')),
+       'the server no longer renders a second, separate status line');
+  t.ok(a.includes('/api/owner-badge.svg'), 'the badge is the only status shown');
+  t.ok(a.includes('Exclude this browser') && a.includes('Stop excluding'),
+       'both actions are offered, since the page cannot read which one applies');
 }

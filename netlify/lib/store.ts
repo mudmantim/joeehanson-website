@@ -93,6 +93,31 @@ export function isAdminHost(req: Request): boolean {
   }
 }
 
+/**
+ * The origin that holds the owner-exclusion cookie.
+ *
+ * `jh_own` is host-only on joeehanson.com and stays that way: the collector
+ * reads it there, and every exclusion already marked on a real device is that
+ * cookie. Nothing here re-scopes it, gives it a Domain, or re-issues it. What
+ * moves is only the place the operator presses the button, so the dashboard
+ * has to know where to send them.
+ *
+ * On the branch deploy the dashboard and the site share one hostname, so this
+ * returns that same host and the badge and bounce are same-origin. That
+ * exercises the tokens, the redirect allowlist, the cookie write and the
+ * caching headers -- everything except the cross-origin leg itself, which
+ * cannot exist until admin.joeehanson.com does.
+ */
+export function publicOriginFor(req: Request): string {
+  const h = new URL(req.url).hostname;
+  return h === 'admin.joeehanson.com' ? 'https://joeehanson.com' : `https://${h}`;
+}
+
+/** The origin the dashboard is served from, used to allowlist redirects back. */
+export function adminOriginFor(req: Request): string {
+  return `https://${new URL(req.url).hostname}`;
+}
+
 export { resolveProcessEnvironment, environmentSignals, KNOWN_CONTEXTS } from './environment.js';
 
 export function storeNameFor(production: boolean): string {
