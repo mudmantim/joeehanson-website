@@ -24,8 +24,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const req = (url) => new Request(url);
 
 export default async function run(t) {
-  const { isProductionRequest, isAdminHost, storeNameFor, PRODUCTION_HOSTS } =
-    await import('../netlify/lib/store.ts');
+  const { isProductionRequest, isAdminHost, storeNameFor, PRODUCTION_HOSTS,
+          publicOriginFor, adminOriginFor } = await import('../netlify/lib/store.ts');
 
   // ---- Production: exactly two hostnames, and nothing that resembles them --
   const production = [
@@ -117,4 +117,37 @@ export function noFuzzyHostMatching(t) {
        'no prefix, suffix or substring matching is used on the hostname');
   t.ok(!/Netlify\.env\.get\(['"]CONTEXT['"]\)/.test(code),
        'the environment is still not read from CONTEXT');
+}
+
+/**
+ * Where the badge and the exclusion bounce point.
+ *
+ * This is what makes a branch deploy safe to sign into and press buttons on.
+ * Only the real subdomain reaches across to joeehanson.com; every test host
+ * points at itself, so exercising exclusion on a branch deploy sets a cookie
+ * on that branch deploy and cannot touch the owner cookie on the real site.
+ */
+export async function exclusionTargets(t) {
+  const { publicOriginFor, adminOriginFor } = await import('../netlify/lib/store.ts');
+  const at = (h) => new Request(`https://${h}/admin`);
+
+  t.equal(publicOriginFor(at('admin.joeehanson.com')), 'https://joeehanson.com',
+          'the real subdomain sends exclusion to the real site');
+
+  for (const h of ['admin-branch-test--joeehanson.netlify.app',
+                   'admin--joeehanson.netlify.app',
+                   'deploy-preview-12--joeehanson.netlify.app',
+                   'joeehanson.com']) {
+    t.equal(publicOriginFor(at(h)), `https://${h}`,
+            `${h} points at itself, so it cannot write the real owner cookie`);
+  }
+
+  t.equal(adminOriginFor(at('admin-branch-test--joeehanson.netlify.app')),
+          'https://admin-branch-test--joeehanson.netlify.app',
+          'the bounce returns to the host that sent it');
+
+  // The apex during the transition: same origin, so the existing dashboard at
+  // joeehanson.com/admin keeps setting the real cookie exactly as it does now.
+  t.equal(publicOriginFor(at('joeehanson.com')), 'https://joeehanson.com',
+          'the apex dashboard still writes the real cookie directly');
 }
