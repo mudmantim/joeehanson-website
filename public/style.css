@@ -907,6 +907,72 @@ a {
    REDUCED MOTION
    ============================================================ */
 
+/* ---- Hero, on a phone held upright ---------------------------------------
+   The hero photograph is 1942x809 -- 2.40:1. A portrait phone viewport is
+   about 0.46:1, so object-fit: cover scales the image to the viewport HEIGHT
+   and then throws away roughly four fifths of its width. At the default
+   horizontal position that surviving fifth is x 40%-60% of the picture, and
+   Joe sits at x 24%-43%: the crop begins exactly where he ends. What reached
+   the phone was the tip of the guitar headstock at the left edge and then bare
+   stage. The image was loading perfectly the whole time.
+
+   Only the horizontal position needs moving. Because the image is far wider
+   than the viewport, cover scales by height, the full height is always shown,
+   and the Y component of object-position does nothing here.
+
+   The photograph is a silhouette against a lamp, so it also needs to be less
+   dark than the desktop treatment: at brightness(0.2) a black silhouette on a
+   dim stage is simply black. Lifting it reveals the lamp and the rim light on
+   Joe without touching the desktop composition. */
+@media (max-width: 720px) and (orientation: portrait) {
+  .hero__bg-img {
+    object-position: 33% center;
+    filter: brightness(0.46) saturate(0.62);
+  }
+
+  /* The name now sits over the brightest part of the picture. This keeps it
+     legible without dimming the whole frame again: a soft pool of shade behind
+     the text only, and the existing bottom fade to carry it into the page. */
+  .hero__overlay {
+    background:
+      radial-gradient(ellipse 88% 34% at 50% 46%, rgba(8, 8, 7, 0.72) 0%, rgba(8, 8, 7, 0.34) 55%, transparent 78%),
+      radial-gradient(ellipse 70% 40% at 33% 22%, rgba(200, 121, 65, 0.14) 0%, transparent 70%),
+      linear-gradient(to bottom,
+        rgba(8, 8, 7, 0.55) 0%,
+        rgba(8, 8, 7, 0.12) 26%,
+        rgba(8, 8, 7, 0.35) 62%,
+        rgba(8, 8, 7, 0.92) 100%
+      );
+  }
+
+  /* Cheap insurance for the few pixels where cream meets lamp glow. */
+  .hero__name,
+  .hero__tagline {
+    text-shadow: 0 1px 16px rgba(8, 8, 7, 0.85);
+  }
+
+  /* Centred vertically, the name lands straight across his arms and the
+     guitar -- the two things worth seeing. Dropping the block into the lower
+     third clears the figure and leaves the text over the darkest part of the
+     frame, which is where it is most readable anyway. */
+  .hero {
+    align-items: flex-end;
+  }
+
+  /* The content is bottom-aligned now, so this padding is what holds it clear
+     of the scroll indicator -- which sits 2.8rem up and is 52px tall, giving it
+     the bottom ~6.05rem of the hero. The floor has to clear that at every
+     height, and a vh-only value does not: on a 568px screen 17vh is 96.6px and
+     the buttons landed on the indicator by a few pixels. Hence a 7rem floor. */
+  .hero__content {
+    padding-bottom: clamp(7rem, 17vh, 10rem);
+  }
+
+  .hero__ctas {
+    margin-top: clamp(1.6rem, 4vh, 2.4rem);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fade-in,
   .reveal {
