@@ -230,12 +230,27 @@ export function renderDashboard(owner: DashboardView): string {
   const badge = `${owner.publicOrigin}/api/owner-badge.svg?t=${encodeURIComponent(owner.badgeToken)}&n=${encodeURIComponent(owner.nonce)}`;
 
   const ownForm = (exclude: boolean, label: string) => `
-    <form method="post" action="${owner.publicOrigin}/api/own">
+    <form method="post" action="${owner.publicOrigin}/api/own" data-own="${exclude ? 'on' : 'off'}">
       <input type="hidden" name="exclude" value="${exclude ? '1' : '0'}">
       <input type="hidden" name="t" value="${escapeHtml(owner.setToken)}">
       <input type="hidden" name="return" value="${escapeHtml(owner.returnTo)}">
       <button type="submit">${label}</button>
     </form>`;
+
+  /**
+   * One action, not two -- without being able to read the cookie.
+   *
+   * The page cannot see jh_own: it is HttpOnly and on another origin, and a
+   * credentialed cross-origin endpoint was deliberately not built. But an
+   * image's intrinsic size is readable across origins with no CORS, so the
+   * apex answers a 1px-wide probe whose HEIGHT carries the state.
+   *
+   * Both forms are rendered, and the wrong one is removed once the answer
+   * arrives. That order matters: if the probe never loads -- offline, blocked,
+   * the apex unreachable -- the operator is left with both buttons and can
+   * still act, rather than a panel with no way to change anything.
+   */
+  const probe = `${owner.publicOrigin}/api/owner-badge.svg?probe=1&t=${encodeURIComponent(owner.badgeToken)}&n=${encodeURIComponent(owner.nonce)}`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -276,6 +291,8 @@ export function renderDashboard(owner: DashboardView): string {
   <div class="row" style="margin:1rem 0 0">
     ${ownForm(true, 'Exclude this browser')}
     ${ownForm(false, 'Stop excluding')}
+    <img src="${probe}" alt="" width="1" height="1" id="ownprobe"
+         style="position:absolute;opacity:0;pointer-events:none">
     <button type="button" id="test">Send test event</button>
     <form method="get" action="/api/logout"><button type="submit">Sign out</button></form>
   </div>
@@ -597,6 +614,20 @@ document.getElementById('apply').addEventListener('click', () => {
   current = {from: f, to: t2};
   load();
 });
+
+/* Two pixels tall means this browser is excluded; one means it is not. If the
+   probe errors we leave both actions in place rather than guessing. */
+(function () {
+  const probe = document.getElementById('ownprobe');
+  if (!probe) return;
+  const decide = () => {
+    const excluded = probe.naturalHeight === 2;
+    const drop = document.querySelector('form[data-own="' + (excluded ? 'on' : 'off') + '"]');
+    if (drop) drop.remove();
+  };
+  if (probe.complete && probe.naturalHeight) decide();
+  else probe.addEventListener('load', decide, {once: true});
+})();
 
 document.getElementById('test').addEventListener('click', async () => {
   const out = document.getElementById('testout');
