@@ -59,8 +59,9 @@ def square(im):
 
 
 def write(im, name, size):
+    px = int(str(size).split('-')[0])
     path = os.path.join(ICONS, f'{name}-{size}.png')
-    square(im).resize((size, size), Image.LANCZOS).save(path, 'PNG', optimize=True)
+    square(im).resize((px, px), Image.LANCZOS).save(path, 'PNG', optimize=True)
     return path
 
 
@@ -84,13 +85,16 @@ def main():
     os.makedirs(ICONS, exist_ok=True)
     written = []
 
+    # The -v2 suffix is load-bearing, not decoration. Chrome compares an
+    # installed app against the manifest; if an icon's URL is unchanged it has
+    # no reason to fetch it again, so replacing the bytes at the same path can
+    # go unseen on an installed app indefinitely. A new filename is the signal.
     joe = Image.open(ASH).convert('RGB').crop(JOE_CROP)
     for size in (180, 192, 512):
-        written.append(write(joe, 'icon', size))
-    written.append(
-        maskable(joe, 512, corner_colour(joe)).save(
-            os.path.join(ICONS, 'icon-maskable-512.png'), 'PNG', optimize=True)
-        or os.path.join(ICONS, 'icon-maskable-512.png'))
+        written.append(write(joe, 'icon', f'{size}-v2'))
+    maskable(joe, 512, corner_colour(joe)).save(
+        os.path.join(ICONS, 'icon-maskable-512-v2.png'), 'PNG', optimize=True)
+    written.append(os.path.join(ICONS, 'icon-maskable-512-v2.png'))
 
     # apple-touch-icon is referenced directly by index.html, not the manifest.
     joe.resize((180, 180), Image.LANCZOS).save(
