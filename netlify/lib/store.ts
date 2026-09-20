@@ -37,18 +37,18 @@ export const PRODUCTION_HOST = 'joeehanson.com';
 /**
  * Every hostname whose traffic is real. Exact strings, never prefixes.
  *
- * The dashboard is moving to admin.joeehanson.com, which must read and write
- * the same store as the site it reports on -- it is the same analytics, seen
- * from a second door.
+ * The dashboard lives at admin.joeehanson.com and must read and write the same
+ * store as the site it reports on -- it is the same analytics, seen from a
+ * second door.
  *
- * The literal-ness matters more than it looks. The branch deploy that this
- * migration is tested on is served from `admin--joeehanson.netlify.app`, which
- * shares a prefix with the real host and is NOT production. Any check written
- * as `hostname.startsWith('admin')` would point every test write at the real
- * store, which is the CONTEXT bug over again in a new costume: that one also
- * looked right and quietly merged two environments. So: exact membership, and
- * a test below that feeds this function the branch-deploy host by name and
- * requires the answer to be false.
+ * The literal-ness matters more than it looks. Branch deploys and previews are
+ * served from names like `admin--joeehanson.netlify.app`, which share a prefix
+ * with the real host and are NOT production. A check written as
+ * `hostname.startsWith('admin')` would satisfy the feature and point every
+ * preview write at real visitor data -- the CONTEXT bug over again in a new
+ * costume, and that one also looked right while quietly merging two
+ * environments. So: exact membership, with tests that feed this function those
+ * look-alike hosts by name and require the answer to be false.
  */
 export const PRODUCTION_HOSTS: readonly string[] = [
   'joeehanson.com',
@@ -82,24 +82,16 @@ export function isProductionRequest(req: Request): boolean {
 export function isAdminHost(req: Request): boolean {
   try {
     const h = new URL(req.url).hostname;
-    // The production subdomain, plus the branch deploys it is tested on.
+    // One hostname. The branch-deploy hosts used to prove this out before DNS
+    // existed have been removed now that the real subdomain does.
     //
-    // These are deliberately different strings from PRODUCTION_HOSTS, because
-    // recognising the admin surface and choosing which store to write to are
-    // separate questions. Everything gated on this function is non-secret --
-    // a manifest naming an icon, and a worker that stores nothing -- so a test
-    // host here cannot expose anything. A test host in PRODUCTION_HOSTS would
-    // write test events into real visitor data, which is why that list stays
-    // short and is asserted by name.
-    //
-    // admin--joeehanson.netlify.app cannot currently be built: Netlify turns a
-    // branch with an open pull request into a Deploy Preview rather than a
-    // branch deploy, and PR #12 holds the admin branch. admin-branch-test is
-    // the same commit with no PR, which is how the branch deploy exists at
-    // all. BOTH SHOULD BE REMOVED when the migration merges.
-    return h === 'admin.joeehanson.com'
-      || h === 'admin--joeehanson.netlify.app'
-      || h === 'admin-branch-test--joeehanson.netlify.app';
+    // This stays a separate question from PRODUCTION_HOSTS even though the two
+    // lists now overlap. What this function gates is non-secret -- a manifest
+    // naming an icon, and a worker that stores nothing -- whereas that one
+    // decides whether a write lands in real visitor data. Answering one with
+    // the other is how a plausible `hostname.startsWith('admin')` would put
+    // test traffic into the analytics.
+    return h === 'admin.joeehanson.com';
   } catch {
     return false;
   }

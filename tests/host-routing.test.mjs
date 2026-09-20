@@ -42,8 +42,6 @@ export default async function run(t) {
     // The branch deploy this whole migration is tested on. If this one ever
     // returns true, test traffic is being written into real visitor data.
     'https://admin--joeehanson.netlify.app/admin',
-    // The branch deploy that actually exists. It serves the dashboard and must
-    // still write to the preview store.
     'https://admin-branch-test--joeehanson.netlify.app/admin',
     'https://deploy-preview-12--joeehanson.netlify.app/admin',
     'https://main--joeehanson.netlify.app/',
@@ -67,12 +65,15 @@ export default async function run(t) {
   t.ok(PRODUCTION_HOSTS.includes('admin.joeehanson.com'), 'the dashboard subdomain is production');
 
   // ---- Admin host: a separate question with a separate answer -------------
-  for (const u of ['https://admin.joeehanson.com/admin',
-                   'https://admin--joeehanson.netlify.app/admin',
-                   'https://admin-branch-test--joeehanson.netlify.app/admin']) {
-    t.ok(isAdminHost(req(u)), `admin surface: ${u}`);
-  }
-  for (const u of ['https://joeehanson.com/admin', 'https://joeehanson.com/',
+  t.ok(isAdminHost(req('https://admin.joeehanson.com/admin')), 'admin surface: the real subdomain');
+  t.ok(isAdminHost(req('https://admin.joeehanson.com/api/stats')), 'on any path');
+
+  // The branch-deploy hosts that proved this out before DNS existed are gone.
+  // They are listed here so their removal is asserted, not assumed.
+  for (const u of ['https://admin--joeehanson.netlify.app/admin',
+                   'https://admin-branch-test--joeehanson.netlify.app/admin',
+                   'https://deploy-preview-12--joeehanson.netlify.app/admin',
+                   'https://joeehanson.com/admin', 'https://joeehanson.com/',
                    'https://admin.joeehanson.com.evil.test/', 'http://localhost:8888/admin']) {
     t.ok(!isAdminHost(req(u)), `NOT the admin surface: ${u}`);
   }
@@ -80,20 +81,22 @@ export default async function run(t) {
   // ---- The combination that matters --------------------------------------
   // The branch deploy is the admin surface AND is not production. Answering
   // one of these with the other is precisely the mistake to avoid.
-  for (const h of ['admin--joeehanson.netlify.app', 'admin-branch-test--joeehanson.netlify.app']) {
-    const r = req(`https://${h}/admin`);
-    t.ok(isAdminHost(r) && !isProductionRequest(r),
-         `${h} serves the dashboard AND resolves to the preview store`);
-  }
-
-  const branch = req('https://admin-branch-test--joeehanson.netlify.app/admin');
-  t.ok(isAdminHost(branch) && !isProductionRequest(branch),
-       'the branch deploy serves the dashboard while writing to the preview store');
+  // The pairing that matters now: the dashboard's hostname reads the SAME
+  // store as the site it reports on. If this ever came apart, the dashboard
+  // would quietly show an empty preview store and look like zero traffic.
   const real = req('https://admin.joeehanson.com/admin');
   t.ok(isAdminHost(real) && isProductionRequest(real),
-       'the real subdomain serves the dashboard and writes to the production store');
+       'admin.joeehanson.com serves the dashboard AND reads production');
+
+  // And the inverse: anything that merely looks like it is neither.
+  for (const h of ['admin--joeehanson.netlify.app', 'admin-branch-test--joeehanson.netlify.app']) {
+    const r = req(`https://${h}/admin`);
+    t.ok(!isAdminHost(r) && !isProductionRequest(r),
+         `${h} is neither the admin surface nor production`);
+  }
 
   // ---- and the stores stay distinct --------------------------------------
+  const branch = req('https://admin-branch-test--joeehanson.netlify.app/admin');
   t.ok(storeNameFor(true) !== storeNameFor(false), 'production and preview stores differ');
   t.equal(storeNameFor(isProductionRequest(branch)), storeNameFor(false),
           'branch-deploy traffic resolves to the preview store by name');
