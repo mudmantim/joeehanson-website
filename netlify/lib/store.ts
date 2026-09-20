@@ -82,12 +82,24 @@ export function isProductionRequest(req: Request): boolean {
 export function isAdminHost(req: Request): boolean {
   try {
     const h = new URL(req.url).hostname;
-    // The production subdomain, or the branch deploy it is tested on. The
-    // second is deliberately a different string from the first so that
-    // recognising the admin surface can never be confused with deciding which
-    // store to write to -- those are separate questions and this file answers
-    // them separately.
-    return h === 'admin.joeehanson.com' || h === 'admin--joeehanson.netlify.app';
+    // The production subdomain, plus the branch deploys it is tested on.
+    //
+    // These are deliberately different strings from PRODUCTION_HOSTS, because
+    // recognising the admin surface and choosing which store to write to are
+    // separate questions. Everything gated on this function is non-secret --
+    // a manifest naming an icon, and a worker that stores nothing -- so a test
+    // host here cannot expose anything. A test host in PRODUCTION_HOSTS would
+    // write test events into real visitor data, which is why that list stays
+    // short and is asserted by name.
+    //
+    // admin--joeehanson.netlify.app cannot currently be built: Netlify turns a
+    // branch with an open pull request into a Deploy Preview rather than a
+    // branch deploy, and PR #12 holds the admin branch. admin-branch-test is
+    // the same commit with no PR, which is how the branch deploy exists at
+    // all. BOTH SHOULD BE REMOVED when the migration merges.
+    return h === 'admin.joeehanson.com'
+      || h === 'admin--joeehanson.netlify.app'
+      || h === 'admin-branch-test--joeehanson.netlify.app';
   } catch {
     return false;
   }

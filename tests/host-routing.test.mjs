@@ -42,6 +42,9 @@ export default async function run(t) {
     // The branch deploy this whole migration is tested on. If this one ever
     // returns true, test traffic is being written into real visitor data.
     'https://admin--joeehanson.netlify.app/admin',
+    // The branch deploy that actually exists. It serves the dashboard and must
+    // still write to the preview store.
+    'https://admin-branch-test--joeehanson.netlify.app/admin',
     'https://deploy-preview-12--joeehanson.netlify.app/admin',
     'https://main--joeehanson.netlify.app/',
     'https://joeehanson.netlify.app/',
@@ -64,7 +67,9 @@ export default async function run(t) {
   t.ok(PRODUCTION_HOSTS.includes('admin.joeehanson.com'), 'the dashboard subdomain is production');
 
   // ---- Admin host: a separate question with a separate answer -------------
-  for (const u of ['https://admin.joeehanson.com/admin', 'https://admin--joeehanson.netlify.app/admin']) {
+  for (const u of ['https://admin.joeehanson.com/admin',
+                   'https://admin--joeehanson.netlify.app/admin',
+                   'https://admin-branch-test--joeehanson.netlify.app/admin']) {
     t.ok(isAdminHost(req(u)), `admin surface: ${u}`);
   }
   for (const u of ['https://joeehanson.com/admin', 'https://joeehanson.com/',
@@ -75,7 +80,13 @@ export default async function run(t) {
   // ---- The combination that matters --------------------------------------
   // The branch deploy is the admin surface AND is not production. Answering
   // one of these with the other is precisely the mistake to avoid.
-  const branch = req('https://admin--joeehanson.netlify.app/admin');
+  for (const h of ['admin--joeehanson.netlify.app', 'admin-branch-test--joeehanson.netlify.app']) {
+    const r = req(`https://${h}/admin`);
+    t.ok(isAdminHost(r) && !isProductionRequest(r),
+         `${h} serves the dashboard AND resolves to the preview store`);
+  }
+
+  const branch = req('https://admin-branch-test--joeehanson.netlify.app/admin');
   t.ok(isAdminHost(branch) && !isProductionRequest(branch),
        'the branch deploy serves the dashboard while writing to the preview store');
   const real = req('https://admin.joeehanson.com/admin');
